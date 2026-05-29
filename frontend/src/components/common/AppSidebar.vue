@@ -10,7 +10,7 @@
     <el-menu
       :default-active="currentRoute"
       router
-      background-color="var(--bg-dark)"
+      background-color="var(--sidebar-bg)"
       text-color="var(--text-primary)"
       active-text-color="var(--color-primary)"
     >
@@ -58,6 +58,7 @@ function detectSystemTheme(): boolean {
 interface ThemeVars {
   '--bg-dark': string
   '--bg-panel': string
+  '--sidebar-bg': string
   '--text-primary': string
   '--text-secondary': string
   '--border-color': string
@@ -65,18 +66,20 @@ interface ThemeVars {
 
 const darkTheme: ThemeVars = {
   '--bg-dark': '#1d1e1f',
-  '--bg-panel': '#2a2b2c',
+  '--bg-panel': '#202122',
+  '--sidebar-bg': '#1f2021',
   '--text-primary': '#e0e0e0',
   '--text-secondary': '#909399',
-  '--border-color': '#3a3b3d',
+  '--border-color': '#333435',
 }
 
 const lightTheme: ThemeVars = {
   '--bg-dark': 'rgb(235, 239, 243)',
-  '--bg-panel': '#ffffff',
+  '--bg-panel': 'rgb(248, 250, 252)',
+  '--sidebar-bg': 'rgb(222, 228, 236)',
   '--text-primary': '#000000',
   '--text-secondary': '#606266',
-  '--border-color': '#dcdfe6',
+  '--border-color': '#c8cdd4',
 }
 
 function applyTheme(vars: ThemeVars) {
@@ -108,7 +111,7 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   height: 100%;
-  background-color: var(--bg-dark);
+  background-color: var(--sidebar-bg);
 }
 
 .sidebar-logo {
