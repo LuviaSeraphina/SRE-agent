@@ -37,7 +37,7 @@ _AUTH_FAILURE_PATTERNS=[
     (re.compile(r"sudo\[?\d*\]?:\s*(\S+)\s*:\s*(.*?)\s*;\s*.*?incorrect password"), "sudo", "who", "message"),
     (re.compile(r"sudo:\s*pam_unix\(sudo:auth\):\s*authentication failure.*?user=(\S+)"), "sudo_pam", "user", "source"),
     (re.compile(r"(login|gdm-password|lightdm|polkit)\[\d+\]:.*?(?:authentication failure|FAILED LOGIN).*?(?:user|for user)\s+(\S+)"), "pam", "user", "service"),
-    re.compile(r"(?:fail2ban\.\w+|pam_tally2?|pam_faillock)\[?\d*\]?:\s*(?:Ban|block|deny|lock).*?(?:\d+\.\d+\.\d+\.\d+|\S+)"),
+    (re.compile(r"(?:fail2ban\.\w+|pam_tally2?|pam_faillock)\[?\d*\]?:\s*(?:Ban|block|deny|lock).*?(?:\d+\.\d+\.\d+\.\d+|\S+)"), "ban", "raw", "ip"),
     (re.compile(r"FAILED.*?(?:user[= ]?(\S+))?"), "generic", "user", "raw"),
 ]
 
