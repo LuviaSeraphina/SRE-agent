@@ -185,6 +185,12 @@ def _auto_register_all(reg):
         risk_level=RiskLevel.READ_ONLY,
     ))
     reg.register(MCPTool(
+        name="user_list",
+        description="用户与组查询 (只读): 列出所有用户及其 UID/GID/家目录/Shell",
+        handler=_safe_import("app.mcp_plugins.security_plugin", "user_list"),
+        risk_level=RiskLevel.READ_ONLY,
+    ))
+    reg.register(MCPTool(
         name="system_info",
         description="系统概览: 主机名/内核/发行版/架构/运行时间 (含麒麟检测)",
         handler=_safe_import("app.mcp_plugins.system_plugin", "system_info"),

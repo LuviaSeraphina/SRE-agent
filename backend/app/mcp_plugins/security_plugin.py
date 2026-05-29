@@ -9,7 +9,9 @@ MCP 安全态势感知插件
 4. security_crontab_audit      — 用户定时任务审计(持久化检测)
 5. security_kernel_modules     — 内核模块审计(Rootkit 检测)
 6. security_pending_updates    — 安全更新检测(dnf/apt)
+7. security_user_audit         — 用户与权限审计(空密码/UID=0/NOPASSWD)
 8. security_sysctl_audit       — 内核安全参数审计(ASLR/ptrace/转发)
+9. user_list                   — 用户与组查询(只读)
 
 数据源优先级: journalctl > /var/log/auth.log(自动降级)
 所有操作均为只读(risk_level: read_only)，适合 MCP Agent 安全巡检调用。
@@ -539,3 +541,48 @@ def security_user_audit():
         )
     except Exception as e:
         return _error_response("security_user_audit", e)
+
+"""
+方法: user_list(), 用户与组查询 (只读)
+
+"""
+def user_list():
+    try:
+        users=[]
+        for entry in pwd.getpwall():
+            #只列出 UID>=1000 的普通用户 + root + 系统服务账户 (如 mysql/nginx)
+            if entry.pw_uid>=1000 or entry.pw_name in ("root", "mysql", "nginx", "www-data", "postgres"):
+                users.append({
+                    "name": entry.pw_name,
+                    "uid": entry.pw_uid,
+                    "gid": entry.pw_gid,
+                    "home": entry.pw_dir,
+                    "shell": entry.pw_shell,
+                    "is_system": entry.pw_uid<1000,
+                })
+
+        #读取 /etc/group 获取组信息
+        groups=[]
+        if os.path.exists("/etc/group"):
+            group_lines=_read_log_file("/etc/group", max_lines=100)
+            for line in group_lines:
+                parts=line.split(":")
+                if len(parts)>=4:
+                    groups.append({
+                        "name": parts[0],
+                        "gid": parts[2],
+                        "members": parts[3].split(",") if parts[3] else [],
+                    })
+
+        return _make_response("user_list",
+            data={
+                "users": users,
+                "groups": groups,
+            },
+            summary={
+                "total_users": len(users),
+                "total_groups": len(groups),
+            },
+        )
+    except Exception as e:
+        return _error_response("user_list", e)
