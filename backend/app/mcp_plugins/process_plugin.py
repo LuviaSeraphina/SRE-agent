@@ -23,7 +23,7 @@ process_inspect_schema={
     "description": "获取系统进程信息",
     "inputSchema": {
         "type": "object",
-        "peism ": {
+        "properties": {
             "filter_state": {"type": "string","default": "","enum": ["running","sleeping","stopped","zombie","disk-sleep"]},
             "sort_by": {"type": "string","default": "cpu","enum": ["cpu","mem"]},
             "top_n": {"type": "integer","default": 10,"minimum": 1,"maximum": 100}
