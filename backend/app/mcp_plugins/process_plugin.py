@@ -1,3 +1,8 @@
+"""
+MCP 进程巡检工具
+
+"""
+
 import psutil
 import time
 
