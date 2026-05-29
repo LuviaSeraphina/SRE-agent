@@ -1,6 +1,18 @@
 """
 MCP 安全态势感知插件
 
+提供五项安全检查能力：
+
+1. security_auth_failures      — 多源认证失败统计(SSH/su/sudo/PAM)
+2. security_active_sessions    — 活跃登录会话 & SSH 连接枚举
+3. security_suid_scan          — SUID/SGID 后门文件扫描
+4. security_crontab_audit      — 用户定时任务审计(持久化检测)
+5. security_kernel_modules     — 内核模块审计(Rootkit 检测)
+
+数据源优先级: journalctl > /var/log/auth.log(自动降级)
+所有操作均为只读(risk_level: read_only)，适合 MCP Agent 安全巡检调用。
+返回统一 JSON 结构：{tool, timestamp, risk_level, data, summary}
+
 """
 
 import os

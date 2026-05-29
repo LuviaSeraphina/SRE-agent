@@ -1,6 +1,17 @@
 """
 MCP 进程巡检工具
 
+功能：
+- 获取系统当前进程列表
+- 支持按进程状态过滤(running / sleeping / zombie / disk-sleep 等)
+- 支持按 CPU 或内存使用率排序
+- 返回 Top N 进程(默认 10 个，可配置 1~100)
+
+使用 psutil.process_iter() 遍历进程，返回结构化 dict 列表，
+每次调用前自动预热 CPU 采样，避免首次返回全 0。
+
+用于 MCP Agent 进行系统负载分析、僵尸进程排查、异常进程检测等场景。
+
 """
 
 import psutil
