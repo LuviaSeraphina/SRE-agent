@@ -61,3 +61,10 @@ def read_log_file(path, max_lines=2000):
             return [line.strip() for line in lines[-max_lines:]]
     except (PermissionError, OSError):
         return []
+        
+"""
+方法: alert_if(), 告警句式生产辅助
+"""
+#方法: 告警句式辅助
+def alert_if(condition, template, *args):
+    return template.format(*args) if condition else ""
