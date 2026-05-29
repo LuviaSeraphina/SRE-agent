@@ -1,5 +1,5 @@
 <template>
-  <div class="timeline-wrap" v-loading="loading">
+  <div class="audit-timeline" v-loading="loading">
     <el-empty v-if="!loading && logs.length === 0" description="暂无审计记录" />
 
     <el-timeline v-else>
@@ -7,27 +7,41 @@
         v-for="log in logs"
         :key="log.id"
         :timestamp="formatTime(log.timestamp)"
-        :color="nodeColor(log.risk_level)"
+        :color="riskColor(log.risk_level)"
         placement="top"
       >
-        <div class="timeline-node" :class="{ selected: selectedId === log.id }" @click="onSelect(log)">
-          <StatusBadge :risk-level="log.risk_level" size="small" />
-          <span class="node-user">{{ log.user }}</span>
-          <span class="node-summary">{{ summary(log) }}</span>
+        <div
+          class="timeline-card"
+          :class="{ selected: selectedId === log.id }"
+          @click="emit('select', log)"
+        >
+          <div class="card-header">
+            <StatusBadge :risk-level="log.risk_level" size="small" />
+            <span class="card-user">{{ log.user }}</span>
+          </div>
+          <p class="card-summary">{{ log.stages[0].raw_input }}</p>
+          <div class="card-meta">
+            <span v-if="log.stages[3].rules_hit.length">
+              命中: {{ log.stages[3].rules_hit.join(', ') }}
+            </span>
+            <span v-if="log.stages[4].duration_ms">
+              耗时: {{ log.stages[4].duration_ms }}ms
+            </span>
+          </div>
         </div>
       </el-timeline-item>
     </el-timeline>
 
-    <el-pagination
-      v-if="total > filter.size"
-      class="pagination"
-      background
-      layout="total, prev, pager, next"
-      :total="total"
-      :page-size="filter.size"
-      :current-page="filter.page"
-      @current-change="emit('pageChange', $event)"
-    />
+    <div v-if="total > size" class="pagination">
+      <el-pagination
+        background
+        layout="total, prev, pager, next"
+        :total="total"
+        :page-size="size"
+        :current-page="currentPage"
+        @current-change="emit('page-change', $event)"
+      />
+    </div>
   </div>
 </template>
 
@@ -40,72 +54,85 @@ const props = defineProps<{
   logs: AuditLog[]
   loading: boolean
   total: number
-  filter: { page: number; size: number }
+  size: number
+  currentPage: number
   selectedId: string | null
 }>()
 
 const emit = defineEmits<{
   select: [log: AuditLog]
-  pageChange: [page: number]
+  'page-change': [page: number]
 }>()
+
+function riskColor(level: RiskLevel): string {
+  switch (level) {
+    case 'dangerous':  return '#F56C6C'
+    case 'restricted': return '#E6A23C'
+    default:           return '#67C23A'
+  }
+}
 
 function formatTime(ts: string): string {
   const d = new Date(ts)
-  return d.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
-}
-
-function nodeColor(risk: RiskLevel): string {
-  if (risk === 'dangerous') return '#F56C6C'
-  if (risk === 'restricted') return '#E6A23C'
-  return '#67C23A'
-}
-
-function summary(log: AuditLog): string {
-  const raw = log.stages[0]?.raw_input || ''
-  return raw.length > 60 ? raw.slice(0, 60) + '...' : raw
-}
-
-function onSelect(log: AuditLog) {
-  emit('select', log)
+  return d.toLocaleString('zh-CN', {
+    month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit',
+  })
 }
 </script>
 
 <style scoped>
-.timeline-wrap {
-  padding: 16px;
+.audit-timeline {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 20px;
 }
 
-.timeline-node {
+.timeline-card {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 10px 14px;
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+.timeline-card:hover {
+  border-color: var(--color-primary);
+}
+.timeline-card.selected {
+  border-color: var(--color-primary);
+  background: rgba(64, 158, 255, 0.06);
+}
+
+.card-header {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 10px;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: background 0.15s;
+  margin-bottom: 6px;
 }
-.timeline-node:hover {
-  background: rgba(64, 158, 255, 0.06);
-}
-.timeline-node.selected {
-  background: rgba(64, 158, 255, 0.1);
-}
-
-.node-user {
+.card-user {
+  font-size: 13px;
   font-weight: 600;
-  font-size: 13px;
 }
-.node-summary {
-  flex: 1;
+.card-summary {
   font-size: 13px;
-  color: var(--text-secondary);
+  margin: 0 0 6px;
+  color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  max-width: 100%;
+}
+.card-meta {
+  display: flex;
+  gap: 12px;
+  font-size: 11px;
+  color: var(--text-secondary);
 }
 
 .pagination {
-  margin-top: 16px;
+  display: flex;
   justify-content: center;
+  padding: 16px 0;
 }
 </style>

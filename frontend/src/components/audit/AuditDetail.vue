@@ -1,22 +1,21 @@
 <template>
   <div class="audit-detail">
-    <el-empty v-if="!log" description="选择一条日志查看详情" />
+    <el-empty v-if="!log" description="请选择一条审计记录查看详情" />
 
     <template v-else>
-      <div class="detail-header">
-        <StatusBadge :risk-level="log.risk_level" />
-        <span class="detail-user">{{ log.user }}</span>
-        <span class="detail-time">{{ formatTime(log.timestamp) }}</span>
-      </div>
+      <h3 class="detail-title">审计详情</h3>
 
-      <el-collapse v-model="activeStages">
+      <el-collapse v-model="activeNames">
         <!-- 阶段 1：接收指令 -->
         <el-collapse-item name="1">
           <template #title>
             <span class="stage-title">📥 接收指令</span>
           </template>
-          <blockquote class="stage-block">{{ log.stages[0].raw_input }}</blockquote>
-          <p class="stage-meta">用户: {{ log.stages[0].user }} | {{ formatTime(log.stages[0].timestamp) }}</p>
+          <div class="stage-body">
+            <p><b>用户：</b>{{ log.stages[0].user }}</p>
+            <p><b>时间：</b>{{ log.stages[0].timestamp }}</p>
+            <blockquote>{{ log.stages[0].raw_input }}</blockquote>
+          </div>
         </el-collapse-item>
 
         <!-- 阶段 2：感知环境 -->
@@ -24,10 +23,14 @@
           <template #title>
             <span class="stage-title">🔍 感知环境</span>
           </template>
-          <div class="stage-tags">
-            <el-tag v-for="t in log.stages[1].tools_called" :key="t" size="small" type="info">{{ t }}</el-tag>
+          <div class="stage-body">
+            <p>
+              <b>调用工具：</b>
+              <el-tag v-for="t in log.stages[1].tools_called" :key="t" size="small" class="mr-4">{{ t }}</el-tag>
+              <span v-if="!log.stages[1].tools_called.length" class="dim">无</span>
+            </p>
+            <p><b>快照摘要：</b>{{ log.stages[1].snapshot_summary }}</p>
           </div>
-          <p class="stage-summary">{{ log.stages[1].snapshot_summary }}</p>
         </el-collapse-item>
 
         <!-- 阶段 3：推理决策 -->
@@ -35,38 +38,50 @@
           <template #title>
             <span class="stage-title">🧠 推理决策</span>
           </template>
-          <p class="stage-meta">模型: {{ log.stages[2].llm_model }}</p>
-          <div class="stage-tags">
-            <el-tag v-for="t in log.stages[2].tool_calls_planned" :key="t" size="small" type="warning">{{ t }}</el-tag>
+          <div class="stage-body">
+            <p><b>LLM 模型：</b>{{ log.stages[2].llm_model }}</p>
+            <p>
+              <b>计划工具：</b>
+              <el-tag v-for="t in log.stages[2].tool_calls_planned" :key="t" size="small" class="mr-4">{{ t }}</el-tag>
+              <span v-if="!log.stages[2].tool_calls_planned.length" class="dim">无</span>
+            </p>
+            <el-collapse class="inner-collapse" v-if="log.stages[2].llm_raw_output">
+              <el-collapse-item title="LLM 原始输出">
+                <pre class="code-block">{{ log.stages[2].llm_raw_output }}</pre>
+              </el-collapse-item>
+            </el-collapse>
           </div>
-          <pre class="llm-output">{{ log.stages[2].llm_raw_output }}</pre>
         </el-collapse-item>
 
         <!-- 阶段 4：安全校验 -->
         <el-collapse-item name="4">
           <template #title>
             <span class="stage-title">🛡️ 安全校验</span>
+            <StatusBadge :risk-level="log.risk_level" size="small" class="ml-8" />
           </template>
-          <div class="stage-tags">
-            <el-tag
-              v-for="r in log.stages[3].rules_hit"
-              :key="r"
-              size="small"
-              :type="log.stages[3].rules_hit.length ? 'danger' : 'info'"
-            >{{ r || '无规则命中' }}</el-tag>
+          <div class="stage-body">
+            <p>
+              <b>命中规则：</b>
+              <el-tag v-for="r in log.stages[3].rules_hit" :key="r" type="danger" size="small" class="mr-4">{{ r }}</el-tag>
+              <span v-if="!log.stages[3].rules_hit.length" class="dim">无</span>
+            </p>
+            <p>
+              <b>风险评分：</b>
+              <el-progress
+                :percentage="log.stages[3].risk_score"
+                :color="scoreColor(log.stages[3].risk_score)"
+                :stroke-width="10"
+                style="width: 200px; display: inline-flex; vertical-align: middle;"
+              />
+            </p>
+            <p>
+              <b>决策：</b>
+              <el-tag :type="decisionType(log.stages[3].decision)" size="small">
+                {{ decisionLabel(log.stages[3].decision) }}
+              </el-tag>
+            </p>
+            <p><b>原因：</b>{{ log.stages[3].reason }}</p>
           </div>
-          <div class="risk-score">
-            <span>风险评分</span>
-            <el-progress
-              :percentage="log.stages[3].risk_score"
-              :color="scoreColor(log.stages[3].risk_score)"
-              :stroke-width="10"
-            />
-          </div>
-          <p class="stage-meta">
-            决策: <StatusBadge :risk-level="decisionToRisk(log.stages[3].decision)" size="small" />
-            <span class="reason">{{ log.stages[3].reason }}</span>
-          </p>
         </el-collapse-item>
 
         <!-- 阶段 5：执行结果 -->
@@ -74,16 +89,24 @@
           <template #title>
             <span class="stage-title">⚡ 执行结果</span>
           </template>
-          <p class="stage-meta">{{ log.stages[4].action_taken }}</p>
-          <p class="stage-meta">
-            退出码:
-            <el-tag :type="log.stages[4].exit_code === 0 ? 'success' : 'danger'" size="small">
-              {{ log.stages[4].exit_code ?? 'N/A' }}
-            </el-tag>
-            耗时: {{ log.stages[4].duration_ms }}ms
-          </p>
-          <pre v-if="log.stages[4].stdout" class="output stdout">{{ log.stages[4].stdout }}</pre>
-          <pre v-if="log.stages[4].stderr" class="output stderr">{{ log.stages[4].stderr }}</pre>
+          <div class="stage-body">
+            <p><b>动作：</b>{{ log.stages[4].action_taken }}</p>
+            <p>
+              <b>退出码：</b>
+              <el-tag v-if="log.stages[4].exit_code === 0" type="success" size="small">0</el-tag>
+              <el-tag v-else-if="log.stages[4].exit_code !== null" type="danger" size="small">{{ log.stages[4].exit_code }}</el-tag>
+              <span v-else class="dim">未执行</span>
+            </p>
+            <p><b>耗时：</b>{{ log.stages[4].duration_ms }}ms</p>
+            <div v-if="log.stages[4].stdout">
+              <b>stdout：</b>
+              <pre class="code-block">{{ log.stages[4].stdout }}</pre>
+            </div>
+            <div v-if="log.stages[4].stderr">
+              <b>stderr：</b>
+              <pre class="code-block stderr">{{ log.stages[4].stderr }}</pre>
+            </div>
+          </div>
         </el-collapse-item>
       </el-collapse>
     </template>
@@ -92,27 +115,35 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import type { AuditLog, RiskLevel } from '@/types'
+import type { AuditLog } from '@/types'
 import StatusBadge from '@/components/common/StatusBadge.vue'
 
 defineProps<{ log: AuditLog | null }>()
 
-const activeStages = ref(['1', '4'])
+const activeNames = ref(['1', '4']) // 默认展开阶段 1 和 4
 
-function formatTime(ts: string): string {
-  return new Date(ts).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
-}
-
-function scoreColor(s: number): string {
-  if (s >= 70) return '#F56C6C'
-  if (s >= 40) return '#E6A23C'
+function scoreColor(score: number): string {
+  if (score >= 70) return '#F56C6C'
+  if (score >= 30) return '#E6A23C'
   return '#67C23A'
 }
 
-function decisionToRisk(d: string): RiskLevel {
-  if (d === 'blocked') return 'dangerous'
-  if (d === 'confirmed') return 'restricted'
-  return 'read_only'
+function decisionType(d: string): 'success' | 'danger' | 'warning' | 'info' {
+  switch (d) {
+    case 'allowed':   return 'success'
+    case 'blocked':   return 'danger'
+    case 'confirmed': return 'warning'
+    default:          return 'info'
+  }
+}
+
+function decisionLabel(d: string): string {
+  switch (d) {
+    case 'allowed':   return '✅ 放行'
+    case 'blocked':   return '❌ 拦截'
+    case 'confirmed': return '👆 确认后执行'
+    default:          return d
+  }
 }
 </script>
 
@@ -123,58 +154,52 @@ function decisionToRisk(d: string): RiskLevel {
   overflow-y: auto;
 }
 
-.detail-header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+.detail-title {
+  font-size: 16px;
+  font-weight: 600;
   margin-bottom: 12px;
 }
-.detail-user { font-weight: 600; }
-.detail-time { color: var(--text-secondary); font-size: 12px; margin-left: auto; }
 
-.stage-title { font-weight: 600; font-size: 14px; }
-.stage-block {
-  border-left: 3px solid var(--color-primary);
-  padding: 8px 12px;
-  margin: 6px 0;
-  background: var(--bg-dark);
-  border-radius: 4px;
+.stage-title {
   font-size: 14px;
+  font-weight: 500;
 }
-.stage-meta { font-size: 12px; color: var(--text-secondary); margin: 4px 0; }
-.stage-summary { font-size: 13px; margin: 6px 0; }
-.stage-tags { display: flex; gap: 6px; flex-wrap: wrap; margin: 4px 0; }
 
-.risk-score {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin: 8px 0;
+.stage-body {
   font-size: 13px;
+  line-height: 1.8;
 }
-.reason { margin-left: 8px; font-size: 12px; color: var(--text-secondary); }
+.stage-body p {
+  margin-bottom: 4px;
+}
+.stage-body blockquote {
+  border-left: 3px solid var(--color-primary);
+  padding: 6px 12px;
+  margin: 8px 0;
+  background: var(--bg-dark);
+  border-radius: 0 4px 4px 0;
+}
 
-.llm-output {
+.code-block {
   background: #111;
   color: #ccc;
-  padding: 10px;
+  padding: 8px 12px;
   border-radius: 4px;
   font-size: 12px;
-  max-height: 200px;
+  max-height: 180px;
   overflow-y: auto;
   white-space: pre-wrap;
-  margin-top: 6px;
+  word-break: break-all;
+}
+.code-block.stderr {
+  color: #f88;
 }
 
-.output {
-  padding: 8px 10px;
-  border-radius: 4px;
-  font-size: 12px;
-  max-height: 150px;
-  overflow-y: auto;
-  white-space: pre-wrap;
-  margin-top: 4px;
+.inner-collapse {
+  margin-top: 8px;
 }
-.stdout { background: #111; color: #ccc; }
-.stderr { background: #2a1111; color: #f56c6c; }
+
+.dim { color: var(--text-secondary); }
+.mr-4 { margin-right: 4px; }
+.ml-8 { margin-left: 8px; }
 </style>

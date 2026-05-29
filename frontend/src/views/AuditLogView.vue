@@ -3,20 +3,21 @@
     <!-- 筛选器 -->
     <AuditFilter @filter-change="onFilterChange" />
 
-    <!-- 左右分栏 -->
+    <!-- 左：时间线 | 右：详情 -->
     <div class="audit-body">
-      <div class="audit-left">
+      <div class="timeline-panel">
         <AuditTimeline
           :logs="store.logs"
           :loading="store.loading"
           :total="store.total"
-          :filter="{ page: store.filter.page, size: store.filter.size }"
+          :size="store.filter.size"
+          :current-page="store.filter.page"
           :selected-id="selectedId"
           @select="selectedId = $event.id"
           @page-change="onPageChange"
         />
       </div>
-      <div class="audit-right">
+      <div class="detail-panel">
         <AuditDetail :log="selectedLog" />
       </div>
     </div>
@@ -26,10 +27,10 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useAuditStore } from '@/stores/audit'
+import type { RiskLevel } from '@/types'
 import AuditFilter from '@/components/audit/AuditFilter.vue'
 import AuditTimeline from '@/components/audit/AuditTimeline.vue'
 import AuditDetail from '@/components/audit/AuditDetail.vue'
-import type { RiskLevel } from '@/types'
 
 const store = useAuditStore()
 const selectedId = ref<string | null>(null)
@@ -39,19 +40,18 @@ const selectedLog = computed(() => {
   return store.logs.find((l) => l.id === selectedId.value) ?? null
 })
 
-function onFilterChange(params: { keyword: string; riskLevel: string; dateRange: string[] | null }) {
+function onFilterChange(params: { keyword: string; riskLevel: RiskLevel | ''; dateRange: string[] }) {
   store.setFilter({
     keyword: params.keyword,
-    risk_level: (params.riskLevel || '') as RiskLevel | '',
+    risk_level: params.riskLevel as RiskLevel | '',
   })
-  store.loadLogs()
   selectedId.value = null
+  store.loadLogs()
 }
 
 function onPageChange(page: number) {
   store.setPage(page)
   store.loadLogs()
-  selectedId.value = null
 }
 
 onMounted(() => {
@@ -67,19 +67,19 @@ onMounted(() => {
 }
 
 .audit-body {
-  flex: 1;
   display: flex;
+  flex: 1;
   overflow: hidden;
 }
 
-.audit-left {
-  width: 60%;
+.timeline-panel {
+  flex: 6;
   overflow-y: auto;
   border-right: 1px solid var(--border-color);
 }
 
-.audit-right {
-  width: 40%;
+.detail-panel {
+  flex: 4;
   overflow-y: auto;
 }
 </style>

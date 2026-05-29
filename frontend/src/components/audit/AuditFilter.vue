@@ -1,79 +1,82 @@
 <template>
-  <el-form :inline="true" class="audit-filter" @submit.prevent="onSearch">
-    <el-form-item>
-      <el-input
-        v-model="keyword"
-        placeholder="搜索指令关键字或用户名..."
-        clearable
-        :prefix-icon="Search"
-        style="width: 240px"
-        @clear="onSearch"
-      />
-    </el-form-item>
-
-    <el-form-item>
-      <el-select v-model="riskLevel" placeholder="风险等级" clearable style="width: 150px" @change="onSearch">
-        <el-option label="全部" value="" />
-        <el-option label="🟢 安全" value="read_only" />
-        <el-option label="🟡 需确认" value="restricted" />
-        <el-option label="🔴 高危" value="dangerous" />
-      </el-select>
-    </el-form-item>
-
-    <el-form-item>
-      <el-date-picker
-        v-model="dateRange"
-        type="daterange"
-        range-separator="至"
-        start-placeholder="开始日期"
-        end-placeholder="结束日期"
-        format="YYYY-MM-DD"
-        value-format="YYYY-MM-DD"
-        style="width: 260px"
-        @change="onSearch"
-      />
-    </el-form-item>
-
-    <el-form-item>
-      <el-button type="primary" @click="onSearch">查询</el-button>
-      <el-button @click="onReset">重置</el-button>
-    </el-form-item>
-  </el-form>
+  <div class="audit-filter">
+    <el-form :inline="true" size="default">
+      <el-form-item>
+        <el-input
+          v-model="local.keyword"
+          placeholder="搜索指令关键字或用户名..."
+          clearable
+          :prefix-icon="Search"
+          @change="emitFilter"
+        />
+      </el-form-item>
+      <el-form-item>
+        <el-select
+          v-model="local.riskLevel"
+          placeholder="风险等级"
+          clearable
+          @change="emitFilter"
+        >
+          <el-option label="全部" value="" />
+          <el-option label="🟢 安全 (read_only)" value="read_only" />
+          <el-option label="🟡 需确认 (restricted)" value="restricted" />
+          <el-option label="🔴 高危 (dangerous)" value="dangerous" />
+        </el-select>
+      </el-form-item>
+      <el-form-item>
+        <el-date-picker
+          v-model="local.dateRange"
+          type="daterange"
+          range-separator="~"
+          start-placeholder="开始"
+          end-placeholder="结束"
+          value-format="YYYY-MM-DD"
+          @change="emitFilter"
+        />
+      </el-form-item>
+      <el-form-item>
+        <el-button type="primary" @click="emitFilter">查询</el-button>
+        <el-button @click="reset">重置</el-button>
+      </el-form-item>
+    </el-form>
+  </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { reactive } from 'vue'
 import { Search } from '@element-plus/icons-vue'
+import type { RiskLevel } from '@/types'
 
 const emit = defineEmits<{
-  filterChange: [params: { keyword: string; riskLevel: string; dateRange: string[] | null }]
+  'filter-change': [params: { keyword: string; riskLevel: RiskLevel | ''; dateRange: string[] }]
 }>()
 
-const keyword = ref('')
-const riskLevel = ref('')
-const dateRange = ref<string[] | null>(null)
+const local = reactive({
+  keyword: '',
+  riskLevel: '' as RiskLevel | '',
+  dateRange: [] as string[],
+})
 
-function onSearch() {
-  emit('filterChange', {
-    keyword: keyword.value,
-    riskLevel: riskLevel.value,
-    dateRange: dateRange.value,
+function emitFilter() {
+  emit('filter-change', {
+    keyword: local.keyword,
+    riskLevel: local.riskLevel,
+    dateRange: local.dateRange,
   })
 }
 
-function onReset() {
-  keyword.value = ''
-  riskLevel.value = ''
-  dateRange.value = null
-  onSearch()
+function reset() {
+  local.keyword = ''
+  local.riskLevel = ''
+  local.dateRange = []
+  emitFilter()
 }
 </script>
 
 <style scoped>
 .audit-filter {
-  padding: 12px 16px;
+  padding: 12px 16px 0;
   background: var(--bg-panel);
   border-bottom: 1px solid var(--border-color);
-  margin-bottom: 0;
 }
 </style>
