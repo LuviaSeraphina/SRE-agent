@@ -8,6 +8,8 @@ MCP 安全态势感知插件
 3. security_suid_scan          — SUID/SGID 后门文件扫描
 4. security_crontab_audit      — 用户定时任务审计(持久化检测)
 5. security_kernel_modules     — 内核模块审计(Rootkit 检测)
+6. security_pending_updates    — 安全更新检测(dnf/apt)
+8. security_sysctl_audit       — 内核安全参数审计(ASLR/ptrace/转发)
 
 数据源优先级: journalctl > /var/log/auth.log(自动降级)
 所有操作均为只读(risk_level: read_only)，适合 MCP Agent 安全巡检调用。
@@ -26,6 +28,7 @@ from app.mcp_plugins._common import (
     journalctl_available as _journalctl_available,
     read_log_file as _read_log_file,
     error_response as _error_response,
+    alert_if as _alert_if
 )
 
 _AUTH_FAILURE_PATTERNS=[
@@ -381,3 +384,104 @@ def security_kernel_modules():
         )
     except Exception as e:
         return _error_response("security_kernel_modules", e)
+
+
+"""
+方法: security_pending_updates(), 检测系统待安装的安全更新数量 (dnf/apt 自动适配)
+
+"""
+def security_pending_updates():
+    try:
+        #优先 dnf (麒麟/红帽系), 回退 apt (Debian 系)
+        if os.path.exists("/usr/bin/dnf"):
+            output=_run_command(["dnf", "check-update", "--security", "-q"], timeout=30)
+            pkg_mgr="dnf"
+        elif os.path.exists("/usr/bin/apt"):
+            output=_run_command(["apt", "list", "--upgradable", "-qq"], timeout=30)
+            pkg_mgr="apt"
+        else:
+            return _make_response("security_pending_updates",
+                data={"packages": [], "pkg_manager": "unknown"},
+                summary={"total": 0, "alert": False},
+            )
+
+        if not output:
+            return _make_response("security_pending_updates",
+                data={"packages": [], "pkg_manager": pkg_mgr},
+                summary={"total": 0, "alert": False},
+            )
+
+        #解析更新列表, 只取包名
+        packages=[]
+        for line in output.split("\n"):
+            line=line.strip()
+            if line and not line.startswith("Last ") and not line.startswith("Listing"):
+                packages.append(line.split()[0] if line.split() else line)
+
+        alert=len(packages)>20
+        return _make_response("security_pending_updates",
+            data={
+                "packages": packages[:50],
+                "pkg_manager": pkg_mgr,
+            },
+            summary={
+                "total": len(packages),
+                "alert": alert,
+                "alert_reason": _alert_if(alert, "{} 个待安装更新, 建议尽快升级", len(packages)),
+            },
+        )
+    except Exception as e:
+        return _error_response("security_pending_updates", e)
+
+"""
+方法: security_sysctl_audit(), 内核安全参数审计: ASLR/ptrace_scope/ip_forward 等
+
+"""
+def security_sysctl_audit():
+    try:
+        checks={
+            #参数名: (期望值, 安全说明, 实际值)
+            "kernel.randomize_va_space":    ("2", "ASLR 应开启"),
+            "kernel.kptr_restrict":         ("2", "内核指针泄漏保护"),
+            "kernel.dmesg_restrict":        ("1", "非 root 禁止读 dmesg"),
+            "kernel.yama.ptrace_scope":     ("1", "限制 ptrace"),
+            "net.ipv4.ip_forward":          ("0", "IP 转发应关闭"),
+            "net.ipv4.conf.all.send_redirects": ("0", "ICMP 重定向应关闭"),
+            "net.ipv4.conf.all.accept_source_route": ("0", "源路由应关闭"),
+            "net.ipv4.tcp_syncookies":      ("1", "SYN Cookie 防护"),
+            "net.ipv6.conf.all.disable_ipv6": ("1", "IPv6 如未使用应关闭"),
+            "fs.protected_symlinks":        ("1", "符号链接保护"),
+            "fs.protected_hardlinks":       ("1", "硬链接保护"),
+            "fs.suid_dumpable":             ("0", "SUID 程序 core dump"),
+        }
+
+        violations=[]
+        passed=[]
+        for param, (expected, description) in checks.items():
+            output=_run_command(["sysctl", "-n", param], timeout=3)
+            actual=output.strip() if output else ""
+            if actual!=expected:
+                violations.append({
+                    "param": param,
+                    "expected": expected,
+                    "actual": actual,
+                    "description": description,
+                })
+            else:
+                passed.append(param)
+
+        return _make_response("security_sysctl_audit",
+            data={
+                "violations": violations,
+                "passed_count": len(passed),
+            },
+            summary={
+                "total_checked": len(checks),
+                "violations": len(violations),
+                "alert": len(violations)>0,
+                "alert_reason": _alert_if(len(violations)>0,
+                    "{} 个内核安全参数不符合基线", len(violations)),
+            },
+        )
+    except Exception as e:
+        return _error_response("security_sysctl_audit", e)
