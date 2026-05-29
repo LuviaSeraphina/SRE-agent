@@ -485,3 +485,57 @@ def security_sysctl_audit():
         )
     except Exception as e:
         return _error_response("security_sysctl_audit", e)
+
+
+"""
+方法: security_user_audit(), 用户与权限审计: 空密码账户 / UID=0 非 root / 无密码 sudo
+
+"""
+def security_user_audit():
+    try:
+        issues=[]
+
+        #检查空密码账户 (从 /etc/shadow 第二字段)
+        if os.path.exists("/etc/shadow"):
+            shadow=_read_log_file("/etc/shadow", max_lines=200)
+            for line in shadow:
+                parts=line.split(":")
+                if len(parts)>=2:
+                    user=parts[0]
+                    pwd_field=parts[1]
+                    if pwd_field=="" and user not in ("", "root"):
+                        issues.append({
+                            "user": user,
+                            "type": "empty_password",
+                            "detail": "账户 {} 密码字段为空, 可无密码登录".format(user),
+                        })
+
+        #检查 UID=0 的非 root 账户
+        for entry in pwd.getpwall():
+            if entry.pw_uid==0 and entry.pw_name!="root":
+                issues.append({
+                    "user": entry.pw_name,
+                    "type": "uid_zero",
+                    "detail": "账户 {} 的 UID=0, 具有 root 等效权限".format(entry.pw_name),
+                })
+
+        #检查 sudoers 中无密码 sudo 配置
+        if os.path.exists("/etc/sudoers"):
+            sudoers=_read_log_file("/etc/sudoers", max_lines=200)
+            for line in sudoers:
+                if "NOPASSWD" in line and not line.strip().startswith("#"):
+                    issues.append({
+                        "type": "sudo_nopasswd",
+                        "detail": line.strip()[:200],
+                    })
+
+        return _make_response("security_user_audit",
+            data={"issues": issues},
+            summary={
+                "total_issues": len(issues),
+                "alert": len(issues)>0,
+                "alert_reason": _alert_if(len(issues)>0, "发现 {} 个用户安全风险", len(issues)),
+            },
+        )
+    except Exception as e:
+        return _error_response("security_user_audit", e)
