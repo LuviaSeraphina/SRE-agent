@@ -41,6 +41,7 @@ import { useSystemStore } from '@/stores/system'
 const store = useSystemStore()
 const cpuChartRef = ref<HTMLDivElement>()
 let chart: echarts.ECharts | null = null
+let resizeObserver: ResizeObserver | null = null
 
 // ---- CPU 仪表盘 ----
 function initChart() {
@@ -102,11 +103,16 @@ function progressColor(pct: number): string {
 onMounted(() => {
   initChart()
   updateChart()
+  if (cpuChartRef.value) {
+    resizeObserver = new ResizeObserver(() => chart?.resize())
+    resizeObserver.observe(cpuChartRef.value)
+  }
 })
 
 watch(() => store.summary, updateChart)
 
 onUnmounted(() => {
+  resizeObserver?.disconnect()
   chart?.dispose()
 })
 </script>
@@ -119,7 +125,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 20px;
-  height: 220px;
+  height: 200px;
 }
 .chart-box {
   flex: 1;
