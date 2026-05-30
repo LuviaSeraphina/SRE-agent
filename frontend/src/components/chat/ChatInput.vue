@@ -38,7 +38,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick } from 'vue'
+import { ref, nextTick, onMounted } from 'vue'
 
 defineProps<{ disabled: boolean }>()
 const emit = defineEmits<{ send: [text: string] }>()
@@ -65,6 +65,10 @@ function send() {
   text.value = ''
   nextTick(() => inputRef.value?.focus())
 }
+
+onMounted(() => {
+  nextTick(() => inputRef.value?.focus())
+})
 </script>
 
 <style scoped>

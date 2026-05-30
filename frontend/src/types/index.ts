@@ -121,7 +121,7 @@ export interface StageReasoning {
   tool_calls_planned: string[]
 }
 
-/** 阶段 4 — 安全校验 */
+/** 阶段 4 — 安全校验en */
 export interface StageValidation {
   rules_hit: string[]
   risk_score: number
