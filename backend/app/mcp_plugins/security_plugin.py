@@ -1,6 +1,22 @@
 """
 MCP 安全态势感知插件
 
+提供五项安全检查能力：
+
+1. security_auth_failures      — 多源认证失败统计(SSH/su/sudo/PAM)
+2. security_active_sessions    — 活跃登录会话 & SSH 连接枚举
+3. security_suid_scan          — SUID/SGID 后门文件扫描
+4. security_crontab_audit      — 用户定时任务审计(持久化检测)
+5. security_kernel_modules     — 内核模块审计(Rootkit 检测)
+6. security_pending_updates    — 安全更新检测(dnf/apt)
+7. security_user_audit         — 用户与权限审计(空密码/UID=0/NOPASSWD)
+8. security_sysctl_audit       — 内核安全参数审计(ASLR/ptrace/转发)
+9. user_list                   — 用户与组查询(只读)
+
+数据源优先级: journalctl > /var/log/auth.log(自动降级)
+所有操作均为只读(risk_level: read_only)，适合 MCP Agent 安全巡检调用。
+返回统一 JSON 结构：{tool, timestamp, risk_level, data, summary}
+
 """
 
 import os
@@ -14,6 +30,7 @@ from app.mcp_plugins._common import (
     journalctl_available as _journalctl_available,
     read_log_file as _read_log_file,
     error_response as _error_response,
+    alert_if as _alert_if
 )
 
 _AUTH_FAILURE_PATTERNS=[
@@ -25,7 +42,7 @@ _AUTH_FAILURE_PATTERNS=[
     (re.compile(r"sudo\[?\d*\]?:\s*(\S+)\s*:\s*(.*?)\s*;\s*.*?incorrect password"), "sudo", "who", "message"),
     (re.compile(r"sudo:\s*pam_unix\(sudo:auth\):\s*authentication failure.*?user=(\S+)"), "sudo_pam", "user", "source"),
     (re.compile(r"(login|gdm-password|lightdm|polkit)\[\d+\]:.*?(?:authentication failure|FAILED LOGIN).*?(?:user|for user)\s+(\S+)"), "pam", "user", "service"),
-    re.compile(r"(?:fail2ban\.\w+|pam_tally2?|pam_faillock)\[?\d*\]?:\s*(?:Ban|block|deny|lock).*?(?:\d+\.\d+\.\d+\.\d+|\S+)"),
+    (re.compile(r"(?:fail2ban\.\w+|pam_tally2?|pam_faillock)\[?\d*\]?:\s*(?:Ban|block|deny|lock).*?(?:\d+\.\d+\.\d+\.\d+|\S+)"), "ban", "raw", "ip"),
     (re.compile(r"FAILED.*?(?:user[= ]?(\S+))?"), "generic", "user", "raw"),
 ]
 
@@ -77,6 +94,7 @@ def _match_auth_lines(lines):
 
 """
 方法: security_auth_failures(), 多源登录失败检测, 统计近 hours 小时内的登录失败事件, 返回按 IP/用户聚合的计数和细分类别"
+
 """
 def security_auth_failures(hours=24):
     try:
@@ -116,6 +134,7 @@ def security_auth_failures(hours=24):
 
 """
 方法: security_active_sessions(), 活跃会话枚举, 解析 who -u 输出, 返回登录会话列表
+
 """
 def _parse_who_output():
     output=_run_command(["who", "-u"], timeout=5)
@@ -150,6 +169,7 @@ def _parse_ssh_connections():
 
 """
 方法: security_active_sessions(), 返回当前所有活跃登录会话和 SSH 连接
+
 """
 def security_active_sessions():
     try:
@@ -218,6 +238,7 @@ def _scan_suid(paths):
 
 """
 方法: security_suid_scan(), SUID/SGID 后门扫描, 识别非白名单的提权文件
+
 """
 def security_suid_scan(paths=None):
     try:
@@ -268,6 +289,7 @@ def _parse_crontab(user):
 
 """
 方法: security_crontab_audit(), 审计所有用户的 crontab, 检测可疑定时任务
+
 """
 def security_crontab_audit():
     try:
@@ -345,6 +367,7 @@ def _parse_lsmod():
 
 """
 方法: security_kernel_modules(), 审计已加载内核模块, 识别非标准/可疑模块
+
 """
 def security_kernel_modules():
     try:
@@ -363,3 +386,203 @@ def security_kernel_modules():
         )
     except Exception as e:
         return _error_response("security_kernel_modules", e)
+
+
+"""
+方法: security_pending_updates(), 检测系统待安装的安全更新数量 (dnf/apt 自动适配)
+
+"""
+def security_pending_updates():
+    try:
+        #优先 dnf (麒麟/红帽系), 回退 apt (Debian 系)
+        if os.path.exists("/usr/bin/dnf"):
+            output=_run_command(["dnf", "check-update", "--security", "-q"], timeout=30)
+            pkg_mgr="dnf"
+        elif os.path.exists("/usr/bin/apt"):
+            output=_run_command(["apt", "list", "--upgradable", "-qq"], timeout=30)
+            pkg_mgr="apt"
+        else:
+            return _make_response("security_pending_updates",
+                data={"packages": [], "pkg_manager": "unknown"},
+                summary={"total": 0, "alert": False},
+            )
+
+        if not output:
+            return _make_response("security_pending_updates",
+                data={"packages": [], "pkg_manager": pkg_mgr},
+                summary={"total": 0, "alert": False},
+            )
+
+        #解析更新列表, 只取包名
+        packages=[]
+        for line in output.split("\n"):
+            line=line.strip()
+            if line and not line.startswith("Last ") and not line.startswith("Listing"):
+                packages.append(line.split()[0] if line.split() else line)
+
+        alert=len(packages)>20
+        return _make_response("security_pending_updates",
+            data={
+                "packages": packages[:50],
+                "pkg_manager": pkg_mgr,
+            },
+            summary={
+                "total": len(packages),
+                "alert": alert,
+                "alert_reason": _alert_if(alert, "{} 个待安装更新, 建议尽快升级", len(packages)),
+            },
+        )
+    except Exception as e:
+        return _error_response("security_pending_updates", e)
+
+"""
+方法: security_sysctl_audit(), 内核安全参数审计: ASLR/ptrace_scope/ip_forward 等
+
+"""
+def security_sysctl_audit():
+    try:
+        checks={
+            #参数名: (期望值, 安全说明, 实际值)
+            "kernel.randomize_va_space":    ("2", "ASLR 应开启"),
+            "kernel.kptr_restrict":         ("2", "内核指针泄漏保护"),
+            "kernel.dmesg_restrict":        ("1", "非 root 禁止读 dmesg"),
+            "kernel.yama.ptrace_scope":     ("1", "限制 ptrace"),
+            "net.ipv4.ip_forward":          ("0", "IP 转发应关闭"),
+            "net.ipv4.conf.all.send_redirects": ("0", "ICMP 重定向应关闭"),
+            "net.ipv4.conf.all.accept_source_route": ("0", "源路由应关闭"),
+            "net.ipv4.tcp_syncookies":      ("1", "SYN Cookie 防护"),
+            "net.ipv6.conf.all.disable_ipv6": ("1", "IPv6 如未使用应关闭"),
+            "fs.protected_symlinks":        ("1", "符号链接保护"),
+            "fs.protected_hardlinks":       ("1", "硬链接保护"),
+            "fs.suid_dumpable":             ("0", "SUID 程序 core dump"),
+        }
+
+        violations=[]
+        passed=[]
+        for param, (expected, description) in checks.items():
+            output=_run_command(["sysctl", "-n", param], timeout=3)
+            actual=output.strip() if output else ""
+            if actual!=expected:
+                violations.append({
+                    "param": param,
+                    "expected": expected,
+                    "actual": actual,
+                    "description": description,
+                })
+            else:
+                passed.append(param)
+
+        return _make_response("security_sysctl_audit",
+            data={
+                "violations": violations,
+                "passed_count": len(passed),
+            },
+            summary={
+                "total_checked": len(checks),
+                "violations": len(violations),
+                "alert": len(violations)>0,
+                "alert_reason": _alert_if(len(violations)>0,
+                    "{} 个内核安全参数不符合基线", len(violations)),
+            },
+        )
+    except Exception as e:
+        return _error_response("security_sysctl_audit", e)
+
+
+"""
+方法: security_user_audit(), 用户与权限审计: 空密码账户 / UID=0 非 root / 无密码 sudo
+
+"""
+def security_user_audit():
+    try:
+        issues=[]
+
+        #检查空密码账户 (从 /etc/shadow 第二字段)
+        if os.path.exists("/etc/shadow"):
+            shadow=_read_log_file("/etc/shadow", max_lines=200)
+            for line in shadow:
+                parts=line.split(":")
+                if len(parts)>=2:
+                    user=parts[0]
+                    pwd_field=parts[1]
+                    if pwd_field=="" and user not in ("", "root"):
+                        issues.append({
+                            "user": user,
+                            "type": "empty_password",
+                            "detail": "账户 {} 密码字段为空, 可无密码登录".format(user),
+                        })
+
+        #检查 UID=0 的非 root 账户
+        for entry in pwd.getpwall():
+            if entry.pw_uid==0 and entry.pw_name!="root":
+                issues.append({
+                    "user": entry.pw_name,
+                    "type": "uid_zero",
+                    "detail": "账户 {} 的 UID=0, 具有 root 等效权限".format(entry.pw_name),
+                })
+
+        #检查 sudoers 中无密码 sudo 配置
+        if os.path.exists("/etc/sudoers"):
+            sudoers=_read_log_file("/etc/sudoers", max_lines=200)
+            for line in sudoers:
+                if "NOPASSWD" in line and not line.strip().startswith("#"):
+                    issues.append({
+                        "type": "sudo_nopasswd",
+                        "detail": line.strip()[:200],
+                    })
+
+        return _make_response("security_user_audit",
+            data={"issues": issues},
+            summary={
+                "total_issues": len(issues),
+                "alert": len(issues)>0,
+                "alert_reason": _alert_if(len(issues)>0, "发现 {} 个用户安全风险", len(issues)),
+            },
+        )
+    except Exception as e:
+        return _error_response("security_user_audit", e)
+
+"""
+方法: user_list(), 用户与组查询 (只读)
+
+"""
+def user_list():
+    try:
+        users=[]
+        for entry in pwd.getpwall():
+            #只列出 UID>=1000 的普通用户 + root + 系统服务账户 (如 mysql/nginx)
+            if entry.pw_uid>=1000 or entry.pw_name in ("root", "mysql", "nginx", "www-data", "postgres"):
+                users.append({
+                    "name": entry.pw_name,
+                    "uid": entry.pw_uid,
+                    "gid": entry.pw_gid,
+                    "home": entry.pw_dir,
+                    "shell": entry.pw_shell,
+                    "is_system": entry.pw_uid<1000,
+                })
+
+        #读取 /etc/group 获取组信息
+        groups=[]
+        if os.path.exists("/etc/group"):
+            group_lines=_read_log_file("/etc/group", max_lines=100)
+            for line in group_lines:
+                parts=line.split(":")
+                if len(parts)>=4:
+                    groups.append({
+                        "name": parts[0],
+                        "gid": parts[2],
+                        "members": parts[3].split(",") if parts[3] else [],
+                    })
+
+        return _make_response("user_list",
+            data={
+                "users": users,
+                "groups": groups,
+            },
+            summary={
+                "total_users": len(users),
+                "total_groups": len(groups),
+            },
+        )
+    except Exception as e:
+        return _error_response("user_list", e)
