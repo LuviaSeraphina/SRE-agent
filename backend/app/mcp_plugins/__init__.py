@@ -5,5 +5,5 @@
 # - network_plugin.py    网络感知 (3 Tools)
 # - disk_plugin.py       磁盘与存储感知 (1 Tool)
 # - memory_plugin.py     内存与 OOM 感知 (3 Tools)
-# - security_plugin.py   安全态势感知 (8 Tools) ⭐
+# - security_plugin.py   安全态势感知 (8 Tools)
 # - system_plugin.py     系统健康感知 (4 Tools)
