@@ -1,0 +1,79 @@
+{
+    "_comment": "SRE-agent 系统健康评分配置 — 修改权重和阈值后无需重启服务",
+    "version": "1.0",
+    "weights": {
+        "cpu": 0.25,
+        "memory": 0.25,
+        "disk": 0.20,
+        "load": 0.15,
+        "swap": 0.15
+    },
+    "thresholds": {
+        "cpu": [
+            {"max": 50, "score": 100},
+            {"max": 70, "score": 80},
+            {"max": 85, "score": 60},
+            {"max": 95, "score": 30},
+            {"max": 101, "score": 10}
+        ],
+        "memory": [
+            {"max": 60, "score": 100},
+            {"max": 80, "score": 80},
+            {"max": 90, "score": 50},
+            {"max": 95, "score": 25},
+            {"max": 101, "score": 5}
+        ],
+        "disk": [
+            {"max": 60, "score": 100},
+            {"max": 80, "score": 80},
+            {"max": 90, "score": 50},
+            {"max": 95, "score": 20},
+            {"max": 101, "score": 5}
+        ],
+        "load": [
+            {"max": 0.7, "score": 100},
+            {"max": 1.0, "score": 80},
+            {"max": 2.0, "score": 50},
+            {"max": 5.0, "score": 20},
+            {"max": 999, "score": 5}
+        ],
+        "swap": [
+            {"max": 20, "score": 100},
+            {"max": 50, "score": 70},
+            {"max": 80, "score": 40},
+            {"max": 101, "score": 10}
+        ]
+    },
+    "alerts": {
+        "cpu": [
+            {"max_score": 30, "message": "CPU 使用率偏高: {}%"},
+            {"max_score": 10, "message": "CPU 使用率危险: {}%"}
+        ],
+        "memory": [
+            {"max_score": 50, "message": "内存使用率偏高: {}%"},
+            {"max_score": 25, "message": "内存不足: {}%"},
+            {"max_score": 5, "message": "内存耗尽: {}%"}
+        ],
+        "disk": [
+            {"max_score": 50, "message": "磁盘使用率偏高: {}%"},
+            {"max_score": 20, "message": "磁盘空间不足: {}%"},
+            {"max_score": 5, "message": "磁盘空间耗尽: {}%"}
+        ],
+        "load": [
+            {"max_score": 50, "message": "系统负载偏高: {}x CPU核心数"},
+            {"max_score": 20, "message": "系统过载: {}x CPU核心数"},
+            {"max_score": 5, "message": "系统严重过载: {}x CPU核心数"}
+        ],
+        "swap": [
+            {"max_score": 40, "message": "Swap 使用率偏高: {}% (可能发生内存抖动)"},
+            {"max_score": 10, "message": "Swap 使用率危险: {}% (内存严重不足)"}
+        ]
+    },
+    "grades": [
+        {"min": 90, "label": "A (优秀)"},
+        {"min": 75, "label": "B (良好)"},
+        {"min": 60, "label": "C (一般)"},
+        {"min": 40, "label": "D (警告)"},
+        {"min": 0, "label": "F (严重)"}
+    ]
+}
