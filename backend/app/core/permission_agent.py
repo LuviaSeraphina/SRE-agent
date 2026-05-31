@@ -144,7 +144,7 @@ def get_available_privilege_levels():
         levels.append({"user": _SRE_AGENT_USER, "level": "ops_basic", "available": True})
     else:
         levels.append({"user": _SRE_AGENT_USER, "level": "ops_basic", "available": False,
-                       "setup_cmd": "sudo useradd -r -s /bin/false -d /nonexistent -M {}".format(_SRE_AGENT_USER)})
+                    "setup_cmd": "sudo useradd -r -s /bin/false -d /nonexistent -M {}".format(_SRE_AGENT_USER)})
 
     try:
         pwd.getpwnam(_SANDBOX_USER)
@@ -199,13 +199,15 @@ def check_permission(risk_level, user=None, target=None, action="execute"):
 
     return False, "权限不足: 需要 {}, 当前 {}".format(required, user), None
 
-
+""" 
+方法: require_confirmation(), 判断操作是否需要用户确认
+"""
 def require_confirmation(risk_level):
-    """判断操作是否需要用户确认"""
     return risk_level in ("restricted", "dangerous")
 
-
-#方法: 校验操作路径是否安全 (v2.0 增强)
+""" 
+方法: validate_path(), 校验操作路径是否安全
+"""
 def validate_path(path, action="read"):
     # 规范化路径 (消除 ../ 等)
     normalized = os.path.normpath(os.path.abspath(path))
@@ -225,7 +227,9 @@ def validate_path(path, action="read"):
 
     return True, "路径安全"
 
-
+""" 
+方法: get_permission_level(), 返回当前用户的权限等级
+"""
 #方法: 返回当前用户的权限等级
 def get_permission_level():
     user=_current_user()
@@ -277,7 +281,7 @@ def permission_summary():
 
 
 """
-方法: setup_instructions(), 返回创建 SRE-agent 专用低权限用户的命令指引 (v2.0)
+方法: setup_instructions(), 返回创建 SRE-agent 专用低权限用户的命令指引
 应在首次部署时引导运维人员执行
 """
 def setup_instructions():
