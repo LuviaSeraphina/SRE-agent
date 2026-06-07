@@ -12,7 +12,7 @@
 """
 from sqlalchemy import Column, String, DateTime, func
 from sqlalchemy.types import JSON
-from app.models import Base
+from app.models.base import Base
 from app.models._utils import _new_uuid, _utcnow
 
 class AuditLog(Base):
