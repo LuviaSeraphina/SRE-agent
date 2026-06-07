@@ -10,7 +10,7 @@ from typing import List
 from sqlalchemy import Column, String, DateTime, Text, ForeignKey, func
 from sqlalchemy.orm import Mapped, relationship
 from sqlalchemy.types import JSON
-from app.models import Base
+from app.models.base import Base
 from app.models._utils import _new_uuid, _utcnow
 
 
