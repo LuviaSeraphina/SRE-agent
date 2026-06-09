@@ -3,6 +3,7 @@ MCP 插件共享工具 — 所有插件复用
 """
 import subprocess
 import os
+import re
 from datetime import datetime
 
 """ 
@@ -33,13 +34,16 @@ _ALLOWED_COMMANDS={
     "ss", "ip", "who", "find", "lsmod", "systemctl",
     "journalctl", "dmesg", "cat", "crontab", "sysctl",
     "docker", "podman", "which", "dnf", "yum", "apt",
+    "iptables", "nft",
 }
 
-# 高危参数模式 (即使命令在白名单内, 参数包含这些也拒绝)
-_DANGEROUS_PARAMS={
-    "rm", "-rf", "-r", "-f", "mkfs", "dd", "shutdown", "reboot",
-    "poweroff", "halt", "chmod", "chown", ">", ">>", "&&",
-}
+# 高危参数模式 — 分三类匹配, 避免子串误伤 (如 rm 匹配 format)
+#   词边界: alphabetic 模式使用 \b 边界, 只匹配独立单词
+#   精确:   flag 模式匹配完整参数
+#   子串:   操作符匹配任意位置
+_DANGEROUS_WORD={"rm", "mkfs", "dd", "shutdown", "reboot", "poweroff", "halt", "chmod", "chown"}
+_DANGEROUS_FLAG={"-rf", "-r"}
+_DANGEROUS_SUBSTR={">", ">>", "&&"}
 
 #方法: 在 run_command 前校验命令安全性
 def _is_safe_command(cmd):
@@ -52,7 +56,16 @@ def _is_safe_command(cmd):
 
     #参数中检测高危模式
     for arg in cmd[1:]:
-        for pattern in _DANGEROUS_PARAMS:
+        #词边界匹配 (防子串误伤: format/perform/confirm/-perm)
+        for pattern in _DANGEROUS_WORD:
+            if re.search(r'\b' + re.escape(pattern) + r'\b', arg):
+                return False, "参数 '{}' 包含高危模式 '{}'".format(arg[:50], pattern)
+        #精确匹配 flag
+        for pattern in _DANGEROUS_FLAG:
+            if arg==pattern:
+                return False, "参数 '{}' 包含高危模式 '{}'".format(arg[:50], pattern)
+        #子串匹配 shell 操作符
+        for pattern in _DANGEROUS_SUBSTR:
             if pattern in arg:
                 return False, "参数 '{}' 包含高危模式 '{}'".format(arg[:50], pattern)
 

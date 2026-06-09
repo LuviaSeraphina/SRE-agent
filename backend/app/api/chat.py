@@ -18,6 +18,7 @@ from app.models import Conversation
 from app.services.audit_writer import save_conversation, save_audit_log
 from datetime import datetime, timezone
 import json
+import logging
 
 router=APIRouter()
 
@@ -245,7 +246,6 @@ async def _persist_chat(session_id, user_input, events, tools_called, stage_inpu
 
     except Exception:
         #持久化失败不应影响 HTTP 响应 (已返回)
-        import logging
         logging.getLogger("sre_agent.chat").exception("持久化对话失败")
 
 

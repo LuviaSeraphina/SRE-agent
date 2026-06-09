@@ -23,6 +23,7 @@ from app.mcp_plugins._common import(
 )
 from collections import Counter
 import re
+import os
 
 #方法: 正则解析name和pid
 def _parse_info(raw):
@@ -239,3 +240,90 @@ def network_interface_stats():
         )
     except Exception as e:
         return _error_response("network_interface_stats", e)
+
+
+"""
+方法: network_firewall_audit(), 防火墙规则审计 — iptables/nftables 规则统计
+
+"""
+def network_firewall_audit():
+    try:
+        #检测防火墙类型 — which + 绝对路径双重检查
+        nft_exists=_run_command(["which", "nft"])
+        ipt_exists=_run_command(["which", "iptables"])
+        #补充绝对路径检测 (nft/iptables 通常在 /usr/sbin, 普通用户 which 可能找不到)
+        nft_found=nft_exists and "nft" in nft_exists
+        if not nft_found and os.path.exists("/usr/sbin/nft"):
+            nft_found=True
+        ipt_found=ipt_exists and "iptables" in ipt_exists
+        if not ipt_found and os.path.exists("/usr/sbin/iptables"):
+            ipt_found=True
+
+        fw_type="unknown"
+        rule_count=0
+        rules=[]
+
+        if nft_found:
+            fw_type="nftables"
+            result=_run_command(["nft", "list", "ruleset"], timeout=10)
+            lines=result.split("\n") if result else []
+            rule_count=len([l for l in lines if l.strip()])
+
+        elif ipt_found:
+            fw_type="iptables"
+            for table in ["filter", "nat", "mangle"]:
+                result=_run_command(["iptables", "-t", table, "-L", "-n"], timeout=5)
+                if result:
+                    lines=[l for l in result.split("\n") if l.strip().startswith(("ACCEPT", "DROP", "REJECT", "Chain"))]
+                    rules.extend(lines)
+            rule_count=len(rules)
+
+        return _make_response("network_firewall_audit",
+            data={
+                "firewall_type": fw_type,
+                "rule_count": rule_count,
+            },
+            summary={
+                "type": fw_type,
+                "rules": rule_count,
+                "alert": fw_type=="unknown",
+                "alert_reason": "未检测到防火墙" if fw_type=="unknown" else "",
+            },
+        )
+    except Exception as e:
+        return _error_response("network_firewall_audit", e)
+
+
+"""
+方法: network_tcp_retrans(), TCP 重传率 — 从 ss -ti 解析 retrans 计数, >2% 表示网络异常
+
+"""
+def network_tcp_retrans():
+    try:
+        retrans_total=0
+        conn_count=0
+        result=_run_command(["ss", "-ti"], timeout=5)
+        if result:
+            for line in result.split("\n"):
+                if "retrans:" in line:
+                    conn_count+=1
+                    m=re.search(r"retrans:(\d+)", line)
+                    if m:
+                        retrans_total+=int(m.group(1))
+
+        retrans_rate=round(retrans_total / conn_count * 100, 1) if conn_count > 0 else 0.0
+
+        return _make_response("network_tcp_retrans",
+            data={
+                "connections_checked": conn_count if result else 0,
+                "retransmissions": retrans_total if result else 0,
+                "retrans_rate_percent": retrans_rate,
+            },
+            summary={
+                "rate": retrans_rate,
+                "alert": retrans_rate > 2.0,
+                "alert_reason": "TCP 重传率 {}% > 2%, 网络可能异常".format(retrans_rate) if retrans_rate > 2.0 else "",
+            },
+        )
+    except Exception as e:
+        return _error_response("network_tcp_retrans", e)

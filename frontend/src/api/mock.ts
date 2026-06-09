@@ -7,7 +7,7 @@ import type {
 } from '../types'
 
 /** 切换此开关：true = 前端独立开发，false = 连接后端 */
-export const USE_MOCK = true
+export const USE_MOCK = false
 
 // ========== 仪表盘 Mock ==========
 

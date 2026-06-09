@@ -24,6 +24,7 @@ from app.llm.config import MAX_TOOL_ROUNDS
 from app.llm.tools import get_tools
 from app.llm.providers import get_llm_provider
 from app.llm.utils import normalize_arguments
+from app.core.rca_analyzer import compute_health_score
 import json
 
 # 缓存: platform info 在进程生命周期内不变, 只构建一次
@@ -172,9 +173,32 @@ def _process_tool_call(tc):
 
 
 """
-方法: chat_stream(), 主入口 — 安全检测 + LLM 流式对话 + Tool 调用循环
+方法: _extract_metrics(), 从工具调用结果中提取健康评分的五项指标
+"""
+def _extract_metrics(tool_results):
+    metrics={}
+    for result in tool_results:
+        name=result.get("tool", "")
+        data=result.get("data", {})
+        if name=="system_load":
+            #load_ratio = load1 / cpu_cores
+            load1=data.get("load_1min", 0)
+            cores=data.get("cpu_cores", 1) or 1
+            metrics["load_ratio"]=load1 / cores if cores else 0
+        elif name=="memory_info":
+            metrics["memory_percent"]=data.get("usage_percent", 0)
+        elif name=="disk_inspect_handler":
+            metrics["disk_percent"]=data.get("usage_percent", 0)
+        elif name=="swap_info":
+            metrics["swap_percent"]=data.get("swap_percent", 0)
+        # cpu_percent 从 summary 推断 (暂用 load_ratio * 100 近似)
+    if "cpu_percent" not in metrics:
+        metrics["cpu_percent"]=metrics.get("load_ratio", 0) * 100
+    return metrics
 
-yield 标准 SSE 事件: token / tool_call / tool_result / security_check / error / done
+
+"""
+方法: chat_stream(), 主入口 — 安全检测 + LLM 流式对话 + Tool 调用循环 + RCA 分析
 """
 async def chat_stream(user_input, history=None):
     # 1. 安全前置
@@ -239,10 +263,33 @@ async def chat_stream(user_input, history=None):
         })
 
         # 执行工具, yield SSE 事件, 追加 tool 消息
+        round_results=[]
         for tc in tool_calls_in_round:
             tool_msg, events=_process_tool_call(tc)
             for evt in events:
                 yield evt
+                #收集 tool_result 数据用于 RCA
+                if evt["event"]=="tool_result":
+                    round_results.append(evt.get("data", {}).get("result", {}))
             messages.append(tool_msg)
+
+        #RCA 分析: 采集到系统指标后计算健康评分
+        if round_results:
+            metrics=_extract_metrics(round_results)
+            if any(metrics.values()):  #至少有一个有效指标
+                health=compute_health_score(metrics)
+                scores=health.get("dimension_scores", {})
+                rca_msg=f"""[系统健康评分] {health['score']}/100 ({health['grade']})
+维度得分: CPU={scores.get('cpu',0)} 内存={scores.get('memory',0)} 磁盘={scores.get('disk',0)} 负载={scores.get('load',0)} Swap={scores.get('swap',0)}"""
+                if health.get("alerts"):
+                    rca_msg+="\n⚠️ 告警: " + "; ".join(health["alerts"])
+                #注入 LLM 上下文 (role=system 不会显示给用户)
+                messages.append({"role": "system", "content": rca_msg})
+                #推送给前端展示
+                yield {"event": "rca_analysis", "data": {
+                    "score": health["score"],
+                    "grade": health["grade"],
+                    "alerts": health.get("alerts", []),
+                }}
 
     yield {"event": "done", "data": {}}

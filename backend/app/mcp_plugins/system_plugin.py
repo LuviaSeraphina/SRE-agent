@@ -215,3 +215,40 @@ def system_boot_params():
         )
     except Exception as e:
         return _error_response("system_boot_params", e)
+
+
+"""
+方法: system_package_updates(), 检查可用安全更新数量 — dnf/apt 自动适配
+
+"""
+def system_package_updates():
+    try:
+        plat=_detect_platform()
+        pkg=plat.get("pkg_manager", "")
+
+        if pkg=="dnf":
+            result=_run_command(["dnf", "check-update", "--security"], timeout=30)
+            lines=[l for l in result.split("\n") if l.strip() and not l.startswith("Last metadata")]
+            #排除空行和标题行
+            updates=[l for l in lines if "." in l and " " in l]
+            count=len(updates)
+        elif pkg=="apt":
+            result=_run_command(["apt", "list", "--upgradable"], timeout=15)
+            lines=[l for l in result.split("\n") if "/" in l and "upgradable" not in l.lower()]
+            count=len(lines)
+        else:
+            count=-1
+
+        return _make_response("system_package_updates",
+            data={
+                "updates_count": count,
+                "pkg_manager": pkg,
+            },
+            summary={
+                "count": count,
+                "alert": count > 10,
+                "alert_reason": "{} 个安全更新待安装".format(count) if count > 10 else "",
+            },
+        )
+    except Exception as e:
+        return _error_response("system_package_updates", e)

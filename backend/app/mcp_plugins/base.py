@@ -8,6 +8,7 @@ MCP 插件注册中心 — 统一管理所有 Tool 的注册、发现与调用
 4. 所有 Tool 返回统一结构: {tool, timestamp, risk_level, data, summary}
 """
 from enum import Enum
+import importlib
 from app.core.permission_agent import check_permission
 
 
@@ -235,11 +236,62 @@ def _auto_register_all(reg):
         },
     ))
 
+    #---- Phase 2: 新增工具 (v0.2) ----
+    reg.register(MCPTool(
+        name="disk_inode_usage",
+        description="磁盘 inode 使用率检测 — 生产故障高频根因 (inode 耗尽但磁盘有空间)",
+        handler=_safe_import("app.mcp_plugins.disk_plugin", "disk_inode_handler"),
+        risk_level=RiskLevel.READ_ONLY,
+    ))
+    reg.register(MCPTool(
+        name="disk_io_stats",
+        description="磁盘 I/O 统计: 读写次数、吞吐量 (MB)、读写耗时",
+        handler=_safe_import("app.mcp_plugins.disk_plugin", "disk_io_handler"),
+        risk_level=RiskLevel.READ_ONLY,
+    ))
+    reg.register(MCPTool(
+        name="network_firewall_audit",
+        description="防火墙规则审计: 检测 nftables/iptables 类型并统计规则数量",
+        handler=_safe_import("app.mcp_plugins.network_plugin", "network_firewall_audit"),
+        risk_level=RiskLevel.READ_ONLY,
+    ))
+    reg.register(MCPTool(
+        name="network_tcp_retrans",
+        description="TCP 重传率检测 — 从 ss -ti 解析 retrans 计数, >2% 告警",
+        handler=_safe_import("app.mcp_plugins.network_plugin", "network_tcp_retrans"),
+        risk_level=RiskLevel.READ_ONLY,
+    ))
+    reg.register(MCPTool(
+        name="system_package_updates",
+        description="检测待安装安全更新数量 (dnf/apt 自动适配)",
+        handler=_safe_import("app.mcp_plugins.system_plugin", "system_package_updates"),
+        risk_level=RiskLevel.READ_ONLY,
+    ))
+
+    #---- 容器感知 (v0.2) ----
+    reg.register(MCPTool(
+        name="container_list",
+        description="Docker/Podman 容器列表: 名称/镜像/状态/端口映射/运行时长",
+        handler=_safe_import("app.mcp_plugins.container_plugin", "container_list"),
+        risk_level=RiskLevel.READ_ONLY,
+    ))
+    reg.register(MCPTool(
+        name="container_stats",
+        description="容器资源用量: CPU%/内存/网络 I/O (docker/podman stats)",
+        handler=_safe_import("app.mcp_plugins.container_plugin", "container_stats"),
+        risk_level=RiskLevel.READ_ONLY,
+    ))
+    reg.register(MCPTool(
+        name="container_inspect",
+        description="单容器安全审计: privileged/Capabilities/挂载卷/环境变量数量",
+        handler=_safe_import("app.mcp_plugins.container_plugin", "container_inspect"),
+        risk_level=RiskLevel.READ_ONLY,
+    ))
+
 
 #方法: 安全导入插件模块和函数, 失败返回占位函数
 def _safe_import(module_path, func_name):
     try:
-        import importlib
         mod=importlib.import_module(module_path)
         return getattr(mod, func_name)
     except Exception as e:

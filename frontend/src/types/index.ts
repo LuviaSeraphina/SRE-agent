@@ -146,6 +146,7 @@ export type SSEEventType =
   | 'tool_call'
   | 'tool_result'
   | 'security_check'
+  | 'rca_analysis'
   | 'done'
   | 'error'
 

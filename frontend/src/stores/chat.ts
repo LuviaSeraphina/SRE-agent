@@ -48,6 +48,14 @@ export const useChatStore = defineStore('chat', () => {
         }
         break
 
+      case 'rca_analysis':
+        //健康评分追加到消息内容
+        agentMsg.content += `\n\n📊 **系统健康评分**: ${data.score}/100 (${data.grade})`
+        if (data.alerts && (data.alerts as string[]).length > 0) {
+          agentMsg.content += '\n⚠️ 告警: ' + (data.alerts as string[]).join('; ')
+        }
+        break
+
       case 'done':
         // 流结束，streaming 由外层设为 false
         break
