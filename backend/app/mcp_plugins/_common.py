@@ -34,7 +34,7 @@ _ALLOWED_COMMANDS={
     "ss", "ip", "who", "find", "lsmod", "systemctl",
     "journalctl", "dmesg", "cat", "crontab", "sysctl",
     "docker", "podman", "which", "dnf", "yum", "apt",
-    "iptables", "nft",
+    "iptables", "nft", "getenforce", "aa-status", "dig", "getent",
 }
 
 # 高危参数模式 — 分三类匹配, 避免子串误伤 (如 rm 匹配 format)

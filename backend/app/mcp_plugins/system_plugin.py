@@ -252,3 +252,42 @@ def system_package_updates():
         )
     except Exception as e:
         return _error_response("system_package_updates", e)
+
+
+"""
+方法: system_entropy(), 内核熵池可用量 — 读取 /proc/sys/kernel/random/entropy_avail, <500 影响 TLS/SSH
+
+"""
+def system_entropy():
+    try:
+        entropy_raw=_run_command(["cat", "/proc/sys/kernel/random/entropy_avail"], timeout=5)
+        poolsize_raw=_run_command(["cat", "/proc/sys/kernel/random/poolsize"], timeout=5)
+
+        entropy_avail=int(entropy_raw.strip()) if entropy_raw else 0
+        poolsize=int(poolsize_raw.strip()) if poolsize_raw else 0
+
+        is_critical=entropy_avail<100
+        is_low=entropy_avail<500
+
+        if is_critical:
+            reason=f"熵池严重不足 ({entropy_avail} < 100), TLS/SSH 可能阻塞"
+        elif is_low:
+            reason=f"熵池偏低 ({entropy_avail} < 500), 建议安装 haveged/rng-tools"
+        else:
+            reason=""
+
+        return _make_response("system_entropy",
+            data={
+                "entropy_avail": entropy_avail,
+                "poolsize": poolsize,
+                "is_low": is_low,
+                "is_critical": is_critical,
+            },
+            summary={
+                "entropy_avail": entropy_avail,
+                "alert": entropy_avail<500,
+                "alert_reason": reason,
+            },
+        )
+    except Exception as e:
+        return _error_response("system_entropy", e)

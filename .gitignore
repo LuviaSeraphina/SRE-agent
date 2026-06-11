@@ -11,3 +11,4 @@ dist/
 .github/
 skills-lock.json
 .vscode/
+.agents/

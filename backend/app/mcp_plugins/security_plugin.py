@@ -22,6 +22,7 @@ MCP 安全态势感知插件
 import os
 import re
 import pwd
+import psutil
 from datetime import datetime
 from collections import Counter
 from app.mcp_plugins._common import (
@@ -586,3 +587,129 @@ def user_list():
         )
     except Exception as e:
         return _error_response("user_list", e)
+
+
+"""
+方法: security_open_files(top_n=10), 打开文件数 Top N — 句柄泄漏检测, FD>1000 告警
+
+"""
+def security_open_files(top_n=10):
+    try:
+        top_n=max(1, min(int(top_n), 50))
+        procs=[]
+        total_fds=0
+        max_fds=0
+        top_proc=None
+
+        for proc in psutil.process_iter(['pid','name']):
+            try:
+                pinfo=proc.info
+                nfd=proc.num_fds()
+                total_fds+=nfd
+                procs.append({"pid": pinfo['pid'], "name": pinfo['name'], "num_fds": nfd})
+                if nfd>max_fds:
+                    max_fds=nfd
+                    top_proc=pinfo['name']
+            except (psutil.AccessDenied, psutil.NoSuchProcess):
+                continue
+
+        procs.sort(key=lambda p: p['num_fds'], reverse=True)
+
+        return _make_response("security_open_files",
+            data={"processes": procs[:top_n]},
+            summary={
+                "total_fds": total_fds,
+                "top_process": top_proc if top_proc else "N/A",
+                "max_fds": max_fds,
+                "alert": max_fds>1000,
+                "alert_reason": _alert_if(max_fds>1000, "进程 {} FD 数 {} > 1000, 可能存在句柄泄漏", top_proc, max_fds),
+            },
+        )
+    except Exception as e:
+        return _error_response("security_open_files", e)
+
+
+"""
+方法: security_selinux_status(), SELinux/AppArmor 运行模式检测 — 两者均未启用时告警
+
+"""
+def security_selinux_status():
+    try:
+        se_enabled=False
+        se_mode="disabled"
+        se_mount=os.path.exists("/sys/fs/selinux")
+
+        if se_mount:
+            enforce="/sys/fs/selinux/enforce"
+            if os.path.exists(enforce):
+                try:
+                    with open(enforce, "r") as fh:
+                        val=fh.read().strip()
+                    if val=="1":
+                        se_enabled=True
+                        se_mode="enforcing"
+                    elif val=="0":
+                        se_enabled=True
+                        se_mode="permissive"
+                except Exception:
+                    pass
+
+            #getenforce 补充
+            try:
+                out=_run_command(["getenforce"], timeout=5)
+                if out and out.strip():
+                    ms=out.strip().lower()
+                    if ms in ("enforcing", "permissive", "disabled"):
+                        se_enabled=True
+                        se_mode=ms
+            except Exception:
+                pass
+
+        aa_enabled=False
+        aa_active=False
+
+        #AppArmor 内核参数
+        aa_param="/sys/module/apparmor/parameters/enabled"
+        if os.path.exists(aa_param):
+            try:
+                with open(aa_param, "r") as fh:
+                    if fh.read().strip()=="Y":
+                        aa_enabled=True
+            except Exception:
+                pass
+
+        #aa-status 命令
+        try:
+            _run_command(["aa-status", "--enabled"], timeout=5)
+            aa_active=True
+            aa_enabled=True
+        except Exception:
+            pass
+
+        #判断 MAC 类型
+        if se_enabled and se_mode!="disabled":
+            mac_type="selinux"
+            mac_mode=se_mode
+        elif aa_enabled or aa_active:
+            mac_type="apparmor"
+            mac_mode="enforcing" if aa_active else "disabled"
+        else:
+            mac_type="none"
+            mac_mode="disabled"
+
+        is_alert=(mac_type=="none")
+
+        return _make_response("security_selinux_status",
+            data={
+                "selinux": {"enabled": se_enabled and se_mode!="disabled", "mode": se_mode, "mount_exists": se_mount},
+                "apparmor": {"enabled": aa_enabled, "active": aa_active},
+            },
+            summary={
+                "mac_type": mac_type,
+                "mode": mac_mode,
+                "alert": is_alert,
+                "alert_reason": _alert_if(is_alert, "系统未启用 SELinux 或 AppArmor, 缺少强制访问控制 (MAC) 保护"),
+            },
+        )
+    except Exception as e:
+        return _error_response("security_selinux_status", e)

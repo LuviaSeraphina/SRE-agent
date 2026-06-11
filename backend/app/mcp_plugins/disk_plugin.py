@@ -13,7 +13,7 @@ MCP 磁盘巡检工具
 """
 import os
 import psutil
-from app.mcp_plugins._common import make_response as _make_response, error_response as _error_response
+from app.mcp_plugins._common import make_response as _make_response, error_response as _error_response, run_command as _run_command
 
 
 disk_inspect_schema={
@@ -107,3 +107,96 @@ def disk_io_handler():
         )
     except Exception as e:
         return _error_response("disk_io_handler", e)
+
+
+"""
+方法: disk_mount_audit(), 挂载点审计 — 列出所有挂载点并标记安全属性 (noexec/nosuid/ro)
+
+"""
+def disk_mount_audit():
+    try:
+        parts=psutil.disk_partitions(all=True)
+        mounts=[]
+        suspicious=[]
+
+        for p in parts:
+            opts_list=p.opts.split(",") if p.opts else []
+            flags=[]
+
+            #安全标记
+            if "noexec" in opts_list:
+                flags.append("noexec")
+            if "nosuid" in opts_list:
+                flags.append("nosuid")
+            if "ro" in opts_list:
+                flags.append("ro")
+
+            #可疑配置
+            if p.mountpoint=="/tmp" and "noexec" not in opts_list:
+                flags.append("⚠ /tmp without noexec")
+                suspicious.append(p.mountpoint)
+            if p.mountpoint=="/proc" and "rw" in opts_list:
+                flags.append("⚠ /proc mounted rw")
+                suspicious.append(p.mountpoint)
+
+            mounts.append({
+                "device": p.device,
+                "mountpoint": p.mountpoint,
+                "fstype": p.fstype,
+                "opts": p.opts,
+                "security_flags": flags,
+            })
+
+        return _make_response("disk_mount_audit",
+            data={"mounts": mounts},
+            summary={"total_mounts": len(mounts), "suspicious": suspicious},
+        )
+    except Exception as e:
+        return _error_response("disk_mount_audit", e)
+
+
+"""
+方法: disk_large_files(path="/", top_n=10, min_size_mb=100), 大文件扫描 — find 扫描超过阈值的大文件 Top N
+
+"""
+def disk_large_files(path="/", top_n=10, min_size_mb=100):
+    try:
+        #构造固定参数命令 (不拼接用户输入)
+        cmd=["find", path, "-xdev", "-type", "f", "-size", f"+{min_size_mb}M", "-printf", "%s\t%p\\n"]
+        output=_run_command(cmd, timeout=30)
+        if not output:
+            return _make_response("disk_large_files",
+                data={"files": []},
+                summary={"total_found": 0, "shown": 0, "min_size_mb": min_size_mb, "path": path},
+            )
+
+        files=[]
+        for line in output.strip().split("\n"):
+            line=line.strip()
+            if not line:
+                continue
+            parts=line.split("\t", 1)
+            if len(parts)!=2:
+                continue
+            try:
+                size_bytes=int(parts[0])
+            except ValueError:
+                continue
+            size_mb=round(size_bytes / 1048576, 1)
+            files.append({"path": parts[1], "size_mb": size_mb})
+
+        #按大小降序
+        files.sort(key=lambda x: x["size_mb"], reverse=True)
+        shown=files[:top_n] if top_n>0 else files
+
+        return _make_response("disk_large_files",
+            data={"files": shown},
+            summary={
+                "total_found": len(files),
+                "shown": len(shown),
+                "min_size_mb": min_size_mb,
+                "path": path,
+            },
+        )
+    except Exception as e:
+        return _error_response("disk_large_files", e)

@@ -327,3 +327,61 @@ def network_tcp_retrans():
         )
     except Exception as e:
         return _error_response("network_tcp_retrans", e)
+
+
+"""
+方法: network_dns_check(domain, dns_server=""), DNS 解析测试 — dig 优先, getent 兜底
+
+"""
+def network_dns_check(domain, dns_server=""):
+    try:
+        #dig 可用?
+        dig_ok=False
+        try:
+            which_out=_run_command(["which", "dig"], timeout=3)
+            dig_ok=bool(which_out and "/dig" in which_out)
+        except Exception:
+            dig_ok=False
+
+        ips=[]
+        if dig_ok:
+            cmd=["dig", "+short", domain]
+            if dns_server:
+                cmd.append(f"@{dns_server}")
+            out=_run_command(cmd, timeout=5)
+            if out:
+                for line in out.split("\n"):
+                    line=line.strip()
+                    if line and not line.startswith(";"):
+                        ips.append(line)
+
+        #dig 无结果, 兜底 getent
+        if not ips:
+            try:
+                out=_run_command(["getent", "hosts", domain], timeout=5)
+                if out:
+                    for line in out.split("\n"):
+                        line=line.strip()
+                        if line:
+                            ip=line.split()[0] if line.split() else ""
+                            if ip and ip not in ips:
+                                ips.append(ip)
+            except Exception:
+                pass
+
+        resolved=len(ips)>0
+        return _make_response("network_dns_check",
+            data={
+                "domain": domain,
+                "dns_server": dns_server if dns_server else "system-default",
+                "resolved_ips": ips,
+                "count": len(ips),
+            },
+            summary={
+                "resolved": resolved,
+                "ip_count": len(ips),
+                "dns_server": dns_server if dns_server else "system-default",
+            },
+        )
+    except Exception as e:
+        return _error_response("network_dns_check", e)

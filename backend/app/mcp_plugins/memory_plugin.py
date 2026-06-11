@@ -142,3 +142,107 @@ def memory_oom_history(hours=24):
         )
     except Exception as e:
         return _error_response("memory_oom_history", e)
+
+
+"""
+方法: memory_hugepages(), 大页内存状态 — 从 /proc/meminfo 解析 HugePages 字段
+
+"""
+def memory_hugepages():
+    try:
+        output=_run_command(["cat", "/proc/meminfo"], timeout=5)
+        if not output:
+            return _make_response("memory_hugepages",
+                data={"total": 0, "free": 0, "used": 0, "usage_percent": 0, "page_size_kb": 0},
+                summary={"usage_percent": 0, "alert": False},
+            )
+
+        huge_total=0
+        huge_free=0
+        huge_rsvd=0
+        huge_surp=0
+        huge_pagesize=0
+
+        for line in output.split("\n"):
+            parts=line.split(":")
+            if len(parts)<2:
+                continue
+            key=parts[0].strip()
+            val=parts[1].strip().split()[0]
+            val_int=int(val) if val.isdigit() else 0
+
+            if key=="HugePages_Total":
+                huge_total=val_int
+            elif key=="HugePages_Free":
+                huge_free=val_int
+            elif key=="HugePages_Rsvd":
+                huge_rsvd=val_int
+            elif key=="HugePages_Surp":
+                huge_surp=val_int
+            elif key=="Hugepagesize":
+                huge_pagesize=val_int
+
+        used=huge_total - huge_free
+        usage_percent=round(used / huge_total * 100, 1) if huge_total>0 else 0.0
+
+        return _make_response("memory_hugepages",
+            data={
+                "total": huge_total,
+                "free": huge_free,
+                "reserved": huge_rsvd,
+                "surplus": huge_surp,
+                "used": used,
+                "usage_percent": usage_percent,
+                "page_size_kb": huge_pagesize,
+            },
+            summary={"usage_percent": usage_percent, "alert": False},
+        )
+    except Exception as e:
+        return _error_response("memory_hugepages", e)
+
+
+"""
+方法: memory_slab_info(), 内核 Slab 缓存用量 — 从 /proc/meminfo 解析 Slab/SReclaimable/SUnreclaim
+
+"""
+def memory_slab_info():
+    try:
+        output=_run_command(["cat", "/proc/meminfo"], timeout=5)
+        if not output:
+            return _make_response("memory_slab_info",
+                data={"slab_total_kb": 0, "slab_reclaimable_kb": 0, "slab_unreclaimable_kb": 0, "slab_total_mb": 0.0},
+                summary={"slab_mb": 0.0, "alert": False},
+            )
+
+        slab_kb=0
+        slab_rec_kb=0
+        slab_unrec_kb=0
+
+        for line in output.split("\n"):
+            parts=line.split(":")
+            if len(parts)<2:
+                continue
+            key=parts[0].strip()
+            val=parts[1].strip().split()[0]
+            val_int=int(val) if val.isdigit() else 0
+
+            if key=="Slab":
+                slab_kb=val_int
+            elif key=="SReclaimable":
+                slab_rec_kb=val_int
+            elif key=="SUnreclaim":
+                slab_unrec_kb=val_int
+
+        slab_mb=round(slab_kb / 1024, 1)
+
+        return _make_response("memory_slab_info",
+            data={
+                "slab_total_kb": slab_kb,
+                "slab_reclaimable_kb": slab_rec_kb,
+                "slab_unreclaimable_kb": slab_unrec_kb,
+                "slab_total_mb": slab_mb,
+            },
+            summary={"slab_mb": slab_mb, "alert": False},
+        )
+    except Exception as e:
+        return _error_response("memory_slab_info", e)

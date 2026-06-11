@@ -100,6 +100,55 @@ def _auto_register_all(reg):
         risk_level=RiskLevel.READ_ONLY,
     ))
     reg.register(MCPTool(
+        name="process_detail",
+        description="获取单个进程的详细信息: PID/名称/状态/CPU/内存/线程数/FD/运行时间/工作目录/可执行文件/用户/nice",
+        handler=_safe_import("app.mcp_plugins.process_plugin", "process_detail_handler"),
+        risk_level=RiskLevel.READ_ONLY,
+        parameters={
+            "pid": {"type": "integer", "description": "进程 PID"},
+        },
+    ))
+    reg.register(MCPTool(
+        name="process_tree",
+        description="构建进程树, 以 PID 1 为根展示父子关系, 每节点含 pid/name/ppid/status/children",
+        handler=_safe_import("app.mcp_plugins.process_plugin", "process_tree_handler"),
+        risk_level=RiskLevel.READ_ONLY,
+    ))
+    reg.register(MCPTool(
+        name="process_zombie_scan",
+        description="扫描系统僵尸进程, 返回僵尸进程列表及父进程名, 发现僵尸进程时告警",
+        handler=_safe_import("app.mcp_plugins.process_plugin", "process_zombie_scan_handler"),
+        risk_level=RiskLevel.READ_ONLY,
+    ))
+    reg.register(MCPTool(
+        name="process_top_cpu",
+        description="获取 CPU 占用最高的 Top N 进程 (默认 5, 最大 20)",
+        handler=_safe_import("app.mcp_plugins.process_plugin", "process_top_cpu_handler"),
+        risk_level=RiskLevel.READ_ONLY,
+        parameters={
+            "top_n": {"type": "integer", "default": 5, "minimum": 1, "maximum": 20, "description": "返回进程数量"},
+        },
+    ))
+    reg.register(MCPTool(
+        name="process_top_memory",
+        description="获取内存占用最高的 Top N 进程 (默认 5, 最大 20), 含 RSS 物理内存",
+        handler=_safe_import("app.mcp_plugins.process_plugin", "process_top_memory_handler"),
+        risk_level=RiskLevel.READ_ONLY,
+        parameters={
+            "top_n": {"type": "integer", "default": 5, "minimum": 1, "maximum": 20, "description": "返回进程数量"},
+        },
+    ))
+    reg.register(MCPTool(
+        name="process_kill",
+        description="终止指定进程 (SIGTERM/SIGKILL), 多级安全护栏阻止终止 init/自身/关键系统进程",
+        handler=_safe_import("app.mcp_plugins.process_plugin", "process_kill_handler"),
+        risk_level=RiskLevel.DANGEROUS,
+        parameters={
+            "pid": {"type": "integer", "description": "目标进程 PID"},
+            "signal_name": {"type": "string", "default": "SIGTERM", "description": "信号名称: SIGTERM (优雅终止) 或 SIGKILL (强制终止)"},
+        },
+    ))
+    reg.register(MCPTool(
         name="disk_inspect",
         description="获取磁盘空间使用情况, 支持指定挂载点路径",
         handler=_safe_import("app.mcp_plugins.disk_plugin", "disk_inspect_handler"),
@@ -139,6 +188,18 @@ def _auto_register_all(reg):
         name="memory_oom_history",
         description="OOM Killer 历史事件提取 (journalctl/dmesg)",
         handler=_safe_import("app.mcp_plugins.memory_plugin", "memory_oom_history"),
+        risk_level=RiskLevel.READ_ONLY,
+    ))
+    reg.register(MCPTool(
+        name="memory_hugepages",
+        description="大页内存状态: 总量/空闲/预留/盈余/使用率/页面大小",
+        handler=_safe_import("app.mcp_plugins.memory_plugin", "memory_hugepages"),
+        risk_level=RiskLevel.READ_ONLY,
+    ))
+    reg.register(MCPTool(
+        name="memory_slab_info",
+        description="内核 Slab 缓存用量: 总量/可回收/不可回收 (kB/MB)",
+        handler=_safe_import("app.mcp_plugins.memory_plugin", "memory_slab_info"),
         risk_level=RiskLevel.READ_ONLY,
     ))
     reg.register(MCPTool(
@@ -196,6 +257,21 @@ def _auto_register_all(reg):
         risk_level=RiskLevel.READ_ONLY,
     ))
     reg.register(MCPTool(
+        name="security_open_files",
+        description="打开文件数 Top N (句柄泄漏检测): 遍历所有进程统计 FD 数量, 降序返回 top N, FD>1000 时告警",
+        handler=_safe_import("app.mcp_plugins.security_plugin", "security_open_files"),
+        risk_level=RiskLevel.READ_ONLY,
+        parameters={
+            "top_n": {"type": "integer", "default": 10, "minimum": 1, "maximum": 50, "description": "返回进程数量"},
+        },
+    ))
+    reg.register(MCPTool(
+        name="security_selinux_status",
+        description="SELinux/AppArmor 运行模式检测: 检查 SELinux enforce 状态和 AppArmor 是否活跃, 均未启用时告警",
+        handler=_safe_import("app.mcp_plugins.security_plugin", "security_selinux_status"),
+        risk_level=RiskLevel.READ_ONLY,
+    ))
+    reg.register(MCPTool(
         name="system_info",
         description="系统概览: 主机名/内核/发行版/架构/运行时间 (含麒麟检测)",
         handler=_safe_import("app.mcp_plugins.system_plugin", "system_info"),
@@ -250,6 +326,18 @@ def _auto_register_all(reg):
         risk_level=RiskLevel.READ_ONLY,
     ))
     reg.register(MCPTool(
+        name="disk_mount_audit",
+        description="挂载点审计: 列出所有挂载点及其安全属性 (noexec/nosuid/ro), 标记可疑配置",
+        handler=_safe_import("app.mcp_plugins.disk_plugin", "disk_mount_audit"),
+        risk_level=RiskLevel.READ_ONLY,
+    ))
+    reg.register(MCPTool(
+        name="disk_large_files",
+        description="大文件扫描: 扫描指定路径下超过阈值的大文件, 按大小降序返回 top N",
+        handler=_safe_import("app.mcp_plugins.disk_plugin", "disk_large_files"),
+        risk_level=RiskLevel.READ_ONLY,
+    ))
+    reg.register(MCPTool(
         name="network_firewall_audit",
         description="防火墙规则审计: 检测 nftables/iptables 类型并统计规则数量",
         handler=_safe_import("app.mcp_plugins.network_plugin", "network_firewall_audit"),
@@ -262,9 +350,25 @@ def _auto_register_all(reg):
         risk_level=RiskLevel.READ_ONLY,
     ))
     reg.register(MCPTool(
+        name="network_dns_check",
+        description="DNS 解析测试 — dig 查询指定域名的解析 IP, getent 兜底",
+        handler=_safe_import("app.mcp_plugins.network_plugin", "network_dns_check"),
+        risk_level=RiskLevel.READ_ONLY,
+        parameters={
+            "domain": {"type": "string", "description": "要解析的域名"},
+            "dns_server": {"type": "string", "default": "", "description": "指定 DNS 服务器地址, 为空则使用系统默认"},
+        },
+    ))
+    reg.register(MCPTool(
         name="system_package_updates",
         description="检测待安装安全更新数量 (dnf/apt 自动适配)",
         handler=_safe_import("app.mcp_plugins.system_plugin", "system_package_updates"),
+        risk_level=RiskLevel.READ_ONLY,
+    ))
+    reg.register(MCPTool(
+        name="system_entropy",
+        description="内核熵池可用量 — 读取 /proc/sys/kernel/random/entropy_avail, 低熵(<500)影响 TLS/SSH 等加密服务",
+        handler=_safe_import("app.mcp_plugins.system_plugin", "system_entropy"),
         risk_level=RiskLevel.READ_ONLY,
     ))
 
