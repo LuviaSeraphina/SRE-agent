@@ -16,6 +16,13 @@
     </template>
 
     <div v-if="store.pendingConfirm" class="confirm-body">
+      <el-alert
+        type="warning"
+        :closable="false"
+        show-icon
+        title="当前版本仅记录确认，不会恢复已中断的执行流"
+      />
+
       <div class="confirm-item">
         <span class="item-label">工具名称</span>
         <code class="item-code">{{ store.pendingConfirm.tool_name }}</code>
@@ -46,7 +53,7 @@
           :disabled="confirming"
           @click="handleConfirm"
         >
-          {{ confirmText }}
+          {{ confirming ? '记录中...' : '确认并记录' }}
         </el-button>
       </div>
     </template>
@@ -60,41 +67,36 @@ import { confirmAction } from '@/api/chat'
 
 const store = useChatStore()
 const confirming = ref(false)
-const confirmCount = ref(0)
-const confirmText = ref('确认执行')
 
 const riskLabel = computed(() => {
   switch (store.pendingConfirm?.risk_level) {
-    case 'dangerous':  return '高危'
-    case 'restricted': return '受限'
-    default:           return '未知'
+    case 'dangerous':
+      return '高危'
+    case 'restricted':
+      return '受限'
+    default:
+      return '未知'
   }
 })
 
 async function handleConfirm() {
-  confirmCount.value++
-  if (confirmCount.value < 2) {
-    confirmText.value = '再次确认'
-    setTimeout(() => {
-      if (confirmCount.value < 2) {
-        confirmText.value = '确认执行'
-        confirmCount.value = 0
-      }
-    }, 1500)
-    return
-  }
-
   if (!store.pendingConfirm) return
+
   confirming.value = true
+  const pending = store.pendingConfirm
   try {
-    await confirmAction(store.currentSessionId)
+    const result = await confirmAction(store.currentSessionId)
+    store.messages.push({
+      id: crypto.randomUUID(),
+      role: 'system',
+      content: `⚠️ 已确认操作: ${pending.tool_name}（${result.message}）`,
+      timestamp: new Date().toISOString(),
+    })
+    store.clearPendingConfirm()
   } catch (e) {
     console.error('确认操作失败:', e)
   } finally {
     confirming.value = false
-    confirmCount.value = 0
-    confirmText.value = '确认执行'
-    store.clearPendingConfirm()
   }
 }
 </script>
@@ -120,6 +122,7 @@ async function handleConfirm() {
   align-items: flex-start;
   gap: 12px;
 }
+
 .item-label {
   font-size: 12px;
   font-weight: 500;
@@ -128,6 +131,7 @@ async function handleConfirm() {
   flex-shrink: 0;
   padding-top: 2px;
 }
+
 .item-code {
   font-family: var(--font-mono);
   font-size: 13px;
@@ -137,6 +141,7 @@ async function handleConfirm() {
   padding: 2px 8px;
   border-radius: var(--radius-sm);
 }
+
 .item-text {
   font-size: 13px;
   color: var(--text-primary);
@@ -149,12 +154,21 @@ async function handleConfirm() {
   padding: 2px 10px;
   border-radius: var(--radius-full);
 }
-.risk-dangerous  { color: var(--color-danger); background: var(--color-danger-soft); }
-.risk-restricted { color: var(--color-warning); background: var(--color-warning-soft); }
+
+.risk-dangerous {
+  color: var(--color-danger);
+  background: var(--color-danger-soft);
+}
+
+.risk-restricted {
+  color: var(--color-warning);
+  background: var(--color-warning-soft);
+}
 
 .detail-collapse {
   margin-top: 4px;
 }
+
 .detail-text {
   font-size: 12px;
   font-family: var(--font-mono);
@@ -174,15 +188,3 @@ async function handleConfirm() {
   gap: 10px;
 }
 </style>
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-size: 13px;
-}
-.detail-collapse {
-  margin-top: 4px;
-}
-.detail-text {
-  font-size: 13px;
-  color: var(--text-secondary);
-  line-height: 1.6;
-}

@@ -24,7 +24,7 @@ export function sendMessage(message: string, sessionId: string): Promise<Respons
 
 /**
  * POST /api/chat/confirm — 确认危险操作
- * 当前为 Phase 1 桩实现：后端仅记录审计，不恢复执行
+ * 当前版本只记录确认，不会恢复已中断的执行流
  */
 export async function confirmAction(sessionId: string): Promise<{ success: boolean; message: string }> {
   const res = await fetch(BASE_URL + '/chat/confirm', {

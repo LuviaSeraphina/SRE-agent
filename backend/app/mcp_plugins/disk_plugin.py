@@ -74,7 +74,7 @@ def disk_inode_handler(path="/"):
             summary={
                 "usage_percent": usage_percent,
                 "alert": usage_percent > 80,
-                "alert_reason": "inode 使用率 {}% > 80%, 可能导致无法创建新文件".format(usage_percent) if usage_percent > 80 else "",
+                "alert_reason":f"inode 使用率 {usage_percent}% > 80%, 可能导致无法创建新文件" if usage_percent>80 else "",
             },
         )
     except Exception as e:
@@ -161,13 +161,15 @@ def disk_mount_audit():
 """
 def disk_large_files(path="/", top_n=10, min_size_mb=100):
     try:
-        #构造固定参数命令 (不拼接用户输入)
-        cmd=["find", path, "-xdev", "-type", "f", "-size", f"+{min_size_mb}M", "-printf", "%s\t%p\\n"]
+        #构造固定参数命令(不拼接用户输入)
+        cmd=["find",path,"-xdev","-type","f","-size",f"+{min_size_mb}M","-printf","%s\t%p\\n"]
         output=_run_command(cmd, timeout=30)
+        if output is None:
+            return _error_response("disk_large_files","find 命令执行失败")
         if not output:
             return _make_response("disk_large_files",
-                data={"files": []},
-                summary={"total_found": 0, "shown": 0, "min_size_mb": min_size_mb, "path": path},
+                data={"files":[]},
+                summary={"total_found":0,"shown":0,"min_size_mb":min_size_mb,"path":path},
             )
 
         files=[]
@@ -175,27 +177,27 @@ def disk_large_files(path="/", top_n=10, min_size_mb=100):
             line=line.strip()
             if not line:
                 continue
-            parts=line.split("\t", 1)
+            parts=line.split("\t",1)
             if len(parts)!=2:
                 continue
             try:
                 size_bytes=int(parts[0])
             except ValueError:
                 continue
-            size_mb=round(size_bytes / 1048576, 1)
-            files.append({"path": parts[1], "size_mb": size_mb})
+            size_mb=round(size_bytes/1048576,1)
+            files.append({"path":parts[1],"size_mb":size_mb})
 
         #按大小降序
-        files.sort(key=lambda x: x["size_mb"], reverse=True)
+        files.sort(key=lambda x:x["size_mb"],reverse=True)
         shown=files[:top_n] if top_n>0 else files
 
         return _make_response("disk_large_files",
-            data={"files": shown},
+            data={"files":shown},
             summary={
-                "total_found": len(files),
-                "shown": len(shown),
-                "min_size_mb": min_size_mb,
-                "path": path,
+                "total_found":len(files),
+                "shown":len(shown),
+                "min_size_mb":min_size_mb,
+                "path":path,
             },
         )
     except Exception as e:

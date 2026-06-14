@@ -38,27 +38,29 @@ def container_list():
         runtime=_detect_container_runtime()
         if not runtime:
             return _make_response("container_list",
-                data={"containers": []},
-                summary={"total": 0, "runtime": "none", "alert": False},
+                data={"containers":[]},
+                summary={"total":0,"runtime":"none","alert":False},
             )
 
-        result=_run_command([runtime, "ps", "--format", "{{.ID}}\t{{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}"], timeout=10)
+        result=_run_command([runtime,"ps","--format","{{.ID}}\t{{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}"], timeout=10)
+        if result is None:
+            return _error_response("container_list",f"{runtime} ps 执行失败")
         containers=[]
         if result:
             for line in result.split("\n"):
                 parts=line.split("\t")
                 if len(parts)>=4:
                     containers.append({
-                        "id": parts[0][:12] if parts[0] else "",
-                        "name": parts[1] if len(parts)>1 else "",
-                        "image": parts[2] if len(parts)>2 else "",
-                        "status": parts[3] if len(parts)>3 else "",
-                        "ports": parts[4] if len(parts)>4 else "",
+                        "id":parts[0][:12] if parts[0] else "",
+                        "name":parts[1] if len(parts)>1 else "",
+                        "image":parts[2] if len(parts)>2 else "",
+                        "status":parts[3] if len(parts)>3 else "",
+                        "ports":parts[4] if len(parts)>4 else "",
                     })
 
         return _make_response("container_list",
-            data={"containers": containers, "runtime": runtime},
-            summary={"total": len(containers), "runtime": runtime, "alert": False},
+            data={"containers":containers,"runtime":runtime},
+            summary={"total":len(containers),"runtime":runtime,"alert":False},
         )
     except Exception as e:
         return _error_response("container_list", e)
@@ -71,25 +73,27 @@ def container_stats():
     try:
         runtime=_detect_container_runtime()
         if not runtime:
-            return _make_response("container_stats", data={"stats": []}, summary={"total": 0, "runtime": "none"})
+            return _make_response("container_stats",data={"stats":[]},summary={"total":0,"runtime":"none"})
 
-        result=_run_command([runtime, "stats", "--no-stream", "--format", "{{.Name}}\t{{.CPUPerc}}\t{{.MemPerc}}\t{{.MemUsage}}\t{{.NetIO}}"], timeout=10)
+        result=_run_command([runtime,"stats","--no-stream","--format","{{.Name}}\t{{.CPUPerc}}\t{{.MemPerc}}\t{{.MemUsage}}\t{{.NetIO}}"], timeout=10)
+        if result is None:
+            return _error_response("container_stats",f"{runtime} stats 执行失败")
         stats=[]
         if result:
             for line in result.split("\n"):
                 parts=line.split("\t")
                 if len(parts)>=5:
                     stats.append({
-                        "name": parts[0],
-                        "cpu_percent": parts[1].replace("%", "") if parts[1] else "0",
-                        "mem_percent": parts[2].replace("%", "") if parts[2] else "0",
-                        "mem_usage": parts[3] if parts[3] else "",
-                        "net_io": parts[4] if parts[4] else "",
+                        "name":parts[0],
+                        "cpu_percent":parts[1].replace("%","") if parts[1] else "0",
+                        "mem_percent":parts[2].replace("%","") if parts[2] else "0",
+                        "mem_usage":parts[3] if parts[3] else "",
+                        "net_io":parts[4] if parts[4] else "",
                     })
 
         return _make_response("container_stats",
-            data={"stats": stats, "runtime": runtime},
-            summary={"total": len(stats), "runtime": runtime},
+            data={"stats":stats,"runtime":runtime},
+            summary={"total":len(stats),"runtime":runtime},
         )
     except Exception as e:
         return _error_response("container_stats", e)
@@ -102,14 +106,16 @@ def container_inspect(container_name=""):
     try:
         runtime=_detect_container_runtime()
         if not runtime:
-            return _make_response("container_inspect", data={}, summary={"error": "无容器运行时"})
+            return _make_response("container_inspect",data={},summary={"error":"无容器运行时"})
 
         if not container_name:
-            return _make_response("container_inspect", data={}, summary={"error": "未指定容器名称"})
+            return _make_response("container_inspect",data={},summary={"error":"未指定容器名称"})
 
-        result=_run_command([runtime, "inspect", container_name], timeout=10)
+        result=_run_command([runtime,"inspect",container_name], timeout=10)
+        if result is None:
+            return _error_response("container_inspect",f"{runtime} inspect 执行失败")
         if not result:
-            return _make_response("container_inspect", data={}, summary={"error": "容器不存在: {}".format(container_name)})
+            return _make_response("container_inspect",data={},summary={"error":f"容器不存在: {container_name}"})
 
         data=json.loads(result)
         if not data:

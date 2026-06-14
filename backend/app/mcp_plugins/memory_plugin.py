@@ -107,14 +107,16 @@ def memory_oom_history(hours=24):
     try:
         #优先 journalctl, 回退 dmesg
         output=_run_command([
-            "journalctl", "-k", "--no-pager", "--since", "{}h ago".format(hours)
+            "journalctl","-k","--no-pager","--since",f"{hours}h ago"
         ], timeout=10)
-        if not output:
-            output=_run_command(["dmesg"], timeout=5)
+        if output is None:
+            output=_run_command(["dmesg"],timeout=5)
+        if output is None:
+            return _error_response("memory_oom_history","dmesg 执行失败")
         if not output:
             return _make_response("memory_oom_history",
-                data={"events": []},
-                summary={"total_events": 0, "hours": hours},
+                data={"events":[]},
+                summary={"total_events":0,"hours":hours},
             )
 
         #匹配 OOM 相关行
@@ -126,18 +128,18 @@ def memory_oom_history(hours=24):
                 pid=int(killed.group(1)) if killed else 0
                 process=killed.group(2) if killed else "unknown"
                 events.append({
-                    "process": process,
-                    "pid": pid,
-                    "raw": line[:300],
+                    "process":process,
+                    "pid":pid,
+                    "raw":line[:300],
                 })
 
         return _make_response("memory_oom_history",
             data={"events": events},
             summary={
-                "total_events": len(events),
-                "hours": hours,
-                "alert": len(events)>0,
-                "alert_reason": _alert_if(len(events)>0, "检测到 {} 次 OOM 事件", len(events)),
+                "total_events":len(events),
+                "hours":hours,
+                "alert":len(events)>0,
+                "alert_reason":_alert_if(len(events)>0,"检测到 {} 次 OOM 事件",len(events)),
             },
         )
     except Exception as e:
@@ -151,10 +153,12 @@ def memory_oom_history(hours=24):
 def memory_hugepages():
     try:
         output=_run_command(["cat", "/proc/meminfo"], timeout=5)
+        if output is None:
+            return _error_response("memory_hugepages","cat /proc/meminfo 执行失败")
         if not output:
             return _make_response("memory_hugepages",
-                data={"total": 0, "free": 0, "used": 0, "usage_percent": 0, "page_size_kb": 0},
-                summary={"usage_percent": 0, "alert": False},
+                data={"total":0,"free":0,"used":0,"usage_percent":0,"page_size_kb":0},
+                summary={"usage_percent":0,"alert":False},
             )
 
         huge_total=0
@@ -182,20 +186,20 @@ def memory_hugepages():
             elif key=="Hugepagesize":
                 huge_pagesize=val_int
 
-        used=huge_total - huge_free
-        usage_percent=round(used / huge_total * 100, 1) if huge_total>0 else 0.0
+        used=huge_total-huge_free
+        usage_percent=round(used/huge_total*100,1) if huge_total>0 else 0.0
 
         return _make_response("memory_hugepages",
             data={
-                "total": huge_total,
-                "free": huge_free,
-                "reserved": huge_rsvd,
-                "surplus": huge_surp,
-                "used": used,
-                "usage_percent": usage_percent,
-                "page_size_kb": huge_pagesize,
+                "total":huge_total,
+                "free":huge_free,
+                "reserved":huge_rsvd,
+                "surplus":huge_surp,
+                "used":used,
+                "usage_percent":usage_percent,
+                "page_size_kb":huge_pagesize,
             },
-            summary={"usage_percent": usage_percent, "alert": False},
+            summary={"usage_percent":usage_percent,"alert":False},
         )
     except Exception as e:
         return _error_response("memory_hugepages", e)
@@ -208,10 +212,12 @@ def memory_hugepages():
 def memory_slab_info():
     try:
         output=_run_command(["cat", "/proc/meminfo"], timeout=5)
+        if output is None:
+            return _error_response("memory_slab_info","cat /proc/meminfo 执行失败")
         if not output:
             return _make_response("memory_slab_info",
-                data={"slab_total_kb": 0, "slab_reclaimable_kb": 0, "slab_unreclaimable_kb": 0, "slab_total_mb": 0.0},
-                summary={"slab_mb": 0.0, "alert": False},
+                data={"slab_total_kb":0,"slab_reclaimable_kb":0,"slab_unreclaimable_kb":0,"slab_total_mb":0.0},
+                summary={"slab_mb":0.0,"alert":False},
             )
 
         slab_kb=0
@@ -233,16 +239,16 @@ def memory_slab_info():
             elif key=="SUnreclaim":
                 slab_unrec_kb=val_int
 
-        slab_mb=round(slab_kb / 1024, 1)
+        slab_mb=round(slab_kb/1024,1)
 
         return _make_response("memory_slab_info",
             data={
-                "slab_total_kb": slab_kb,
-                "slab_reclaimable_kb": slab_rec_kb,
-                "slab_unreclaimable_kb": slab_unrec_kb,
-                "slab_total_mb": slab_mb,
+                "slab_total_kb":slab_kb,
+                "slab_reclaimable_kb":slab_rec_kb,
+                "slab_unreclaimable_kb":slab_unrec_kb,
+                "slab_total_mb":slab_mb,
             },
-            summary={"slab_mb": slab_mb, "alert": False},
+            summary={"slab_mb":slab_mb,"alert":False},
         )
     except Exception as e:
         return _error_response("memory_slab_info", e)

@@ -51,19 +51,21 @@ _AUTH_FAILURE_PATTERNS=[
 def _parse_journalctl_auth(hours=24):
     since=f"{hours}h ago"
     output=_run_command([
-        "journalctl", "--no-pager", "-o", "cat",
-        "-t", "sshd", "-t", "sudo", "-t", "su", "-t", "login",
-        "-t", "systemd-logind", "-t", "polkit",
-        "-t", "fail2ban", "-t", "pam_tally2", "-t", "pam_faillock",
-        "--since", since,
+        "journalctl","--no-pager","-o","cat",
+        "-t","sshd","-t","sudo","-t","su","-t","login",
+        "-t","systemd-logind","-t","polkit",
+        "-t","fail2ban","-t","pam_tally2","-t","pam_faillock",
+        "--since",since,
     ], timeout=15)
+    if output is None:
+        return None
     if not output:
         return []
     return _match_auth_lines(output.split("\n"))
 
 #方法: 从传统 /var/log/auth.log 和 /var/log/secure 提取认证失败记录
 def _parse_auth_log(hours=24):
-    log_paths=["/var/log/auth.log", "/var/log/secure"]
+    log_paths=["/var/log/auth.log","/var/log/secure"]
     all_lines=[]
     for p in log_paths:
         lines=_read_log_file(p, max_lines=3000)
@@ -102,32 +104,35 @@ def security_auth_failures(hours=24):
         if _journalctl_available():
             records=_parse_journalctl_auth(hours)
             source="journalctl"
+            if records is None:
+                records=_parse_auth_log(hours)
+                source="auth.log"
         else:
             records=_parse_auth_log(hours)
             source="auth.log"
 
         if not records:
             return _make_response("security_auth_failures",
-                data={"failed_ips": {}, "failed_users": {}, "by_type": {}},
-                summary={"total_failures": 0, "source": source},
+                data={"failed_ips":{},"failed_users":{},"by_type":{}},
+                summary={"total_failures":0,"source":source},
             )
 
-        ip_counter=Counter(r["source"] for r in records if r["source"]!="local" and re.match(r"\d+\.\d+", r["source"]))
+        ip_counter=Counter(r["source"] for r in records if r["source"]!="local" and re.match(r"\d+\.\d+",r["source"]))
         user_counter=Counter(r["user"] for r in records if r["user"]!="unknown")
         type_counter=Counter(r["type"] for r in records)
 
         return _make_response("security_auth_failures",
             data={
-                "failed_ips": dict(ip_counter.most_common(20)),
-                "failed_users": dict(user_counter.most_common(20)),
-                "by_type": dict(type_counter),
+                "failed_ips":dict(ip_counter.most_common(20)),
+                "failed_users":dict(user_counter.most_common(20)),
+                "by_type":dict(type_counter),
             },
             summary={
-                "total_failures": len(records),
-                "unique_ips": len(ip_counter),
-                "unique_users": len(user_counter),
-                "source": source,
-                "hours": hours,
+                "total_failures":len(records),
+                "unique_ips":len(ip_counter),
+                "unique_users":len(user_counter),
+                "source":source,
+                "hours":hours,
             },
         )
     except Exception as e:
@@ -139,6 +144,8 @@ def security_auth_failures(hours=24):
 """
 def _parse_who_output():
     output=_run_command(["who", "-u"], timeout=5)
+    if output is None:
+        return None
     if not output:
         return []
 
@@ -158,6 +165,8 @@ def _parse_who_output():
 #方法: 从 ss 获取 ESTABLISHED 的 SSH 连接
 def _parse_ssh_connections():
     output=_run_command(["ss", "-tnp", "state", "established", "dport", "=", ":22"], timeout=5)
+    if output is None:
+        return None
     if not output:
         return []
     connections=[]
@@ -175,16 +184,20 @@ def _parse_ssh_connections():
 def security_active_sessions():
     try:
         sessions=_parse_who_output()
+        if sessions is None:
+            return _error_response("security_active_sessions","who -u 执行失败")
         ssh_conns=_parse_ssh_connections()
+        if ssh_conns is None:
+            return _error_response("security_active_sessions","ss -tnp state established dport=:22 执行失败")
         return _make_response("security_active_sessions",
             data={
-                "sessions": sessions,
-                "ssh_connections": ssh_conns,
+                "sessions":sessions,
+                "ssh_connections":ssh_conns,
             },
             summary={
-                "active_sessions": len(sessions),
-                "active_ssh": len(ssh_conns),
-                "alert": len(sessions)>10 or len(ssh_conns)>20,
+                "active_sessions":len(sessions),
+                "active_ssh":len(ssh_conns),
+                "alert":len(sessions)>10 or len(ssh_conns)>20,
             },
         )
     except Exception as e:
@@ -201,6 +214,7 @@ _KNOWN_SUID_BINARIES={
 #方法: 扫描指定目录下的 SUID/SGID 文件, 标记非白名单文件
 def _scan_suid(paths):
     results=[]
+    failed_paths=[]
     for scan_path in paths:
         if not os.path.isdir(scan_path):
             continue
@@ -209,6 +223,9 @@ def _scan_suid(paths):
             "-type", "f", "(", "-perm", "-4000", "-o", "-perm", "-2000", ")",
             "-ls",
         ], timeout=30)
+        if output is None:
+            failed_paths.append(scan_path)
+            continue
         if not output:
             continue
         for line in output.split("\n"):
@@ -235,7 +252,7 @@ def _scan_suid(paths):
                 })
             except (IndexError, ValueError):
                 continue
-    return results
+    return results,failed_paths
 
 """
 方法: security_suid_scan(), SUID/SGID 后门扫描, 识别非白名单的提权文件
@@ -245,18 +262,20 @@ def security_suid_scan(paths=None):
     try:
         if paths is None:
             paths=["/usr/bin", "/usr/sbin", "/bin", "/sbin", "/usr/local/bin", "/usr/local/sbin"]
-        files=_scan_suid(paths)
+        files, failed_paths=_scan_suid(paths)
         suspicious=[f for f in files if f["suspicious"]]
+        if not files and failed_paths:
+            return _error_response("security_suid_scan",f"find 扫描失败: {', '.join(failed_paths)}")
         return _make_response("security_suid_scan",
             data={
                 "files": files,
-                "suspicious_files": suspicious,
+                "suspicious_files":suspicious,
             },
             summary={
-                "total_suid_sgid": len(files),
-                "suspicious_count": len(suspicious),
-                "scanned_paths": paths,
-                "alert": len(suspicious)>0,
+                "total_suid_sgid":len(files),
+                "suspicious_count":len(suspicious),
+                "scanned_paths":paths,
+                "alert":len(suspicious)>0,
             },
         )
     except Exception as e:
@@ -279,6 +298,8 @@ def _get_all_users():
 #方法: 获取指定用户的 crontab 有效行
 def _parse_crontab(user):
     output=_run_command(["crontab", "-u", user, "-l"], timeout=5)
+    if output is None:
+        return None
     if not output or "no crontab" in output.lower():
         return []
     lines=[]
@@ -300,6 +321,8 @@ def security_crontab_audit():
 
         for user in users:
             lines=_parse_crontab(user)
+            if lines is None:
+                return _error_response("security_crontab_audit",f"crontab -u {user} -l 执行失败")
             for line in lines:
                 suspicious=False
                 matched_keywords=[]
@@ -347,7 +370,9 @@ _KNOWN_MODULE_PREFIXES={
 
 #方法: 解析 lsmod 输出，识别可疑的内核模块
 def _parse_lsmod():
-    output=_run_command(["lsmod"], timeout=5)
+    output=_run_command(["lsmod"],timeout=5)
+    if output is None:
+        return None
     if not output:
         return []
     modules=[]
@@ -373,16 +398,18 @@ def _parse_lsmod():
 def security_kernel_modules():
     try:
         modules=_parse_lsmod()
+        if modules is None:
+            return _error_response("security_kernel_modules","lsmod 执行失败")
         suspicious=[m for m in modules if m["suspicious"]]
         return _make_response("security_kernel_modules",
             data={
-                "modules": modules,
-                "suspicious_modules": suspicious,
+                "modules":modules,
+                "suspicious_modules":suspicious,
             },
             summary={
-                "total_modules": len(modules),
-                "suspicious_count": len(suspicious),
-                "alert": len(suspicious)>3,
+                "total_modules":len(modules),
+                "suspicious_count":len(suspicious),
+                "alert":len(suspicious)>3,
             },
         )
     except Exception as e:
@@ -397,10 +424,10 @@ def security_pending_updates():
     try:
         #优先 dnf (麒麟/红帽系), 回退 apt (Debian 系)
         if os.path.exists("/usr/bin/dnf"):
-            output=_run_command(["dnf", "check-update", "--security", "-q"], timeout=30)
+            output=_run_command(["dnf","check-update","--security","-q"],timeout=30)
             pkg_mgr="dnf"
         elif os.path.exists("/usr/bin/apt"):
-            output=_run_command(["apt", "list", "--upgradable", "-qq"], timeout=30)
+            output=_run_command(["apt","list","--upgradable","-qq"],timeout=30)
             pkg_mgr="apt"
         else:
             return _make_response("security_pending_updates",
@@ -408,10 +435,12 @@ def security_pending_updates():
                 summary={"total": 0, "alert": False},
             )
 
+        if output is None:
+            return _error_response("security_pending_updates",f"{pkg_mgr} 更新检查执行失败")
         if not output:
             return _make_response("security_pending_updates",
-                data={"packages": [], "pkg_manager": pkg_mgr},
-                summary={"total": 0, "alert": False},
+                data={"packages":[],"pkg_manager":pkg_mgr},
+                summary={"total":0,"alert":False},
             )
 
         #解析更新列表, 只取包名
@@ -424,13 +453,13 @@ def security_pending_updates():
         alert=len(packages)>20
         return _make_response("security_pending_updates",
             data={
-                "packages": packages[:50],
-                "pkg_manager": pkg_mgr,
+                "packages":packages[:50],
+                "pkg_manager":pkg_mgr,
             },
             summary={
-                "total": len(packages),
-                "alert": alert,
-                "alert_reason": _alert_if(alert, "{} 个待安装更新, 建议尽快升级", len(packages)),
+                "total":len(packages),
+                "alert":alert,
+                "alert_reason":_alert_if(alert,"{} 个待安装更新, 建议尽快升级",len(packages)),
             },
         )
     except Exception as e:
@@ -444,46 +473,48 @@ def security_sysctl_audit():
     try:
         checks={
             #参数名: (期望值, 安全说明, 实际值)
-            "kernel.randomize_va_space":    ("2", "ASLR 应开启"),
-            "kernel.kptr_restrict":         ("2", "内核指针泄漏保护"),
-            "kernel.dmesg_restrict":        ("1", "非 root 禁止读 dmesg"),
-            "kernel.yama.ptrace_scope":     ("1", "限制 ptrace"),
-            "net.ipv4.ip_forward":          ("0", "IP 转发应关闭"),
-            "net.ipv4.conf.all.send_redirects": ("0", "ICMP 重定向应关闭"),
-            "net.ipv4.conf.all.accept_source_route": ("0", "源路由应关闭"),
-            "net.ipv4.tcp_syncookies":      ("1", "SYN Cookie 防护"),
-            "net.ipv6.conf.all.disable_ipv6": ("1", "IPv6 如未使用应关闭"),
-            "fs.protected_symlinks":        ("1", "符号链接保护"),
-            "fs.protected_hardlinks":       ("1", "硬链接保护"),
-            "fs.suid_dumpable":             ("0", "SUID 程序 core dump"),
+            "kernel.randomize_va_space":("2","ASLR 应开启"),
+            "kernel.kptr_restrict":("2","内核指针泄漏保护"),
+            "kernel.dmesg_restrict":("1","非 root 禁止读 dmesg"),
+            "kernel.yama.ptrace_scope":("1","限制 ptrace"),
+            "net.ipv4.ip_forward":("0","IP 转发应关闭"),
+            "net.ipv4.conf.all.send_redirects":("0","ICMP 重定向应关闭"),
+            "net.ipv4.conf.all.accept_source_route":("0","源路由应关闭"),
+            "net.ipv4.tcp_syncookies":("1","SYN Cookie 防护"),
+            "net.ipv6.conf.all.disable_ipv6":("1","IPv6 如未使用应关闭"),
+            "fs.protected_symlinks":("1","符号链接保护"),
+            "fs.protected_hardlinks":("1","硬链接保护"),
+            "fs.suid_dumpable":("0","SUID 程序 core dump"),
         }
 
         violations=[]
         passed=[]
         for param, (expected, description) in checks.items():
             output=_run_command(["sysctl", "-n", param], timeout=3)
+            if output is None:
+                return _error_response("security_sysctl_audit",f"sysctl -n {param} 执行失败")
             actual=output.strip() if output else ""
             if actual!=expected:
                 violations.append({
-                    "param": param,
-                    "expected": expected,
-                    "actual": actual,
-                    "description": description,
+                    "param":param,
+                    "expected":expected,
+                    "actual":actual,
+                    "description":description,
                 })
             else:
                 passed.append(param)
 
         return _make_response("security_sysctl_audit",
             data={
-                "violations": violations,
-                "passed_count": len(passed),
+                "violations":violations,
+                "passed_count":len(passed),
             },
             summary={
-                "total_checked": len(checks),
-                "violations": len(violations),
-                "alert": len(violations)>0,
+                "total_checked":len(checks),
+                "violations":len(violations),
+                "alert":len(violations)>0,
                 "alert_reason": _alert_if(len(violations)>0,
-                    "{} 个内核安全参数不符合基线", len(violations)),
+                "{} 个内核安全参数不符合基线",len(violations)),
             },
         )
     except Exception as e:
@@ -506,38 +537,38 @@ def security_user_audit():
                 if len(parts)>=2:
                     user=parts[0]
                     pwd_field=parts[1]
-                    if pwd_field=="" and user not in ("", "root"):
+                    if pwd_field=="" and user not in ("","root"):
                         issues.append({
-                            "user": user,
-                            "type": "empty_password",
-                            "detail": "账户 {} 密码字段为空, 可无密码登录".format(user),
+                            "user":user,
+                            "type":"empty_password",
+                            "detail":f"账户 {user} 密码字段为空, 可无密码登录",
                         })
 
         #检查 UID=0 的非 root 账户
         for entry in pwd.getpwall():
             if entry.pw_uid==0 and entry.pw_name!="root":
                 issues.append({
-                    "user": entry.pw_name,
-                    "type": "uid_zero",
-                    "detail": "账户 {} 的 UID=0, 具有 root 等效权限".format(entry.pw_name),
+                    "user":entry.pw_name,
+                    "type":"uid_zero",
+                    "detail":f"账户 {entry.pw_name} 的 UID=0, 具有 root 等效权限",
                 })
 
         #检查 sudoers 中无密码 sudo 配置
         if os.path.exists("/etc/sudoers"):
-            sudoers=_read_log_file("/etc/sudoers", max_lines=200)
+            sudoers=_read_log_file("/etc/sudoers",max_lines=200)
             for line in sudoers:
                 if "NOPASSWD" in line and not line.strip().startswith("#"):
                     issues.append({
-                        "type": "sudo_nopasswd",
-                        "detail": line.strip()[:200],
+                        "type":"sudo_nopasswd",
+                        "detail":line.strip()[:200],
                     })
 
         return _make_response("security_user_audit",
-            data={"issues": issues},
+        data={"issues":issues},
             summary={
-                "total_issues": len(issues),
-                "alert": len(issues)>0,
-                "alert_reason": _alert_if(len(issues)>0, "发现 {} 个用户安全风险", len(issues)),
+            "total_issues":len(issues),
+            "alert":len(issues)>0,
+            "alert_reason":_alert_if(len(issues)>0,"发现 {} 个用户安全风险",len(issues)),
             },
         )
     except Exception as e:
@@ -657,6 +688,8 @@ def security_selinux_status():
             #getenforce 补充
             try:
                 out=_run_command(["getenforce"], timeout=5)
+                if out is None:
+                    return _error_response("security_selinux_status", "getenforce 执行失败")
                 if out and out.strip():
                     ms=out.strip().lower()
                     if ms in ("enforcing", "permissive", "disabled"):
@@ -680,7 +713,9 @@ def security_selinux_status():
 
         #aa-status 命令
         try:
-            _run_command(["aa-status", "--enabled"], timeout=5)
+            aa_out=_run_command(["aa-status", "--enabled"], timeout=5)
+            if aa_out is None:
+                return _error_response("security_selinux_status", "aa-status --enabled 执行失败")
             aa_active=True
             aa_enabled=True
         except Exception:

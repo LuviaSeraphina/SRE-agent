@@ -1,9 +1,10 @@
 """
 MCP 插件共享工具 — 所有插件复用
 """
-import subprocess
+import logging
 import os
 import re
+import subprocess
 from datetime import datetime
 
 """ 
@@ -31,19 +32,19 @@ def error_response(tool, error):
 
 # 允许执行的命令白名单 (只有这些命令可通过 run_command 执行)
 _ALLOWED_COMMANDS={
-    "ss", "ip", "who", "find", "lsmod", "systemctl",
-    "journalctl", "dmesg", "cat", "crontab", "sysctl",
-    "docker", "podman", "which", "dnf", "yum", "apt",
-    "iptables", "nft", "getenforce", "aa-status", "dig", "getent",
+    "ss","ip","who","find","lsmod","systemctl",
+    "journalctl","dmesg","cat","crontab","sysctl",
+    "docker","podman","which","dnf","yum","apt",
+    "iptables","nft","getenforce","aa-status","dig","getent",
 }
 
 # 高危参数模式 — 分三类匹配, 避免子串误伤 (如 rm 匹配 format)
 #   词边界: alphabetic 模式使用 \b 边界, 只匹配独立单词
 #   精确:   flag 模式匹配完整参数
 #   子串:   操作符匹配任意位置
-_DANGEROUS_WORD={"rm", "mkfs", "dd", "shutdown", "reboot", "poweroff", "halt", "chmod", "chown"}
-_DANGEROUS_FLAG={"-rf", "-r"}
-_DANGEROUS_SUBSTR={">", ">>", "&&"}
+_DANGEROUS_WORD={"rm","mkfs","dd","shutdown","reboot","poweroff","halt","chmod","chown"}
+_DANGEROUS_FLAG={"-rf","-r"}
+_DANGEROUS_SUBSTR={">",">>","&&"}
 
 #方法: 在 run_command 前校验命令安全性
 def _is_safe_command(cmd):
@@ -52,34 +53,39 @@ def _is_safe_command(cmd):
         return False, "空命令"
     base=cmd[0]
     if base not in _ALLOWED_COMMANDS:
-        return False, "命令 '{}' 不在白名单内".format(base)
+        return False,f"命令 '{base}' 不在白名单内"
 
     #参数中检测高危模式
     for arg in cmd[1:]:
         #词边界匹配 (防子串误伤: format/perform/confirm/-perm)
         for pattern in _DANGEROUS_WORD:
             if re.search(r'\b' + re.escape(pattern) + r'\b', arg):
-                return False, "参数 '{}' 包含高危模式 '{}'".format(arg[:50], pattern)
+                return False,f"参数 '{arg[:50]}' 包含高危模式 '{pattern}'"
         #精确匹配 flag
         for pattern in _DANGEROUS_FLAG:
             if arg==pattern:
-                return False, "参数 '{}' 包含高危模式 '{}'".format(arg[:50], pattern)
+                return False,f"参数 '{arg[:50]}' 包含高危模式 '{pattern}'"
         #子串匹配 shell 操作符
         for pattern in _DANGEROUS_SUBSTR:
             if pattern in arg:
-                return False, "参数 '{}' 包含高危模式 '{}'".format(arg[:50], pattern)
+                return False,f"参数 '{arg[:50]}' 包含高危模式 '{pattern}'"
 
     return True, ""
 
+_logger=logging.getLogger("sre_agent.mcp")
+
 """
-方法: run_command(), 安全执行固定参数命令, 返回 stdout, 超时或失败返回空字符串
+方法: run_command(), 安全执行固定参数命令
+
+成功时返回 stdout 字符串, 正常无输出返回 ""。
+执行失败时返回 None 并记录 stderr, 以便上层显式上报。
 """
 def run_command(cmd, timeout=10):
     #安全校验
-    safe, reason=_is_safe_command(cmd)
+    safe,reason=_is_safe_command(cmd)
     if not safe:
-        print("[run_command] 拦截: {} — {}".format(" ".join(cmd[:3]), reason))
-        return ""
+       _logger.warning(f"命令拦截: {' '.join(cmd[:3])} — {reason}")
+       return None
 
     try:
         result=subprocess.run(
@@ -88,9 +94,17 @@ def run_command(cmd, timeout=10):
             text=True,
             timeout=timeout
         )
-        return result.stdout.strip()
-    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
-        return ""
+        stdout=result.stdout.strip()
+        stderr=(result.stderr or "").strip()
+        if result.returncode!=0 and not stdout:
+            _logger.warning(f"命令执行失败: {' '.join(cmd)} (rc={result.returncode}){f' stderr={stderr}' if stderr else ''}")
+            return None
+        if result.returncode!=0 and stderr:
+            _logger.warning(f"命令返回非 0: {' '.join(cmd)} (rc={result.returncode}){f' stderr={stderr}' if stderr else ''}")
+        return stdout
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as e:
+        _logger.warning(f"命令执行异常: {' '.join(cmd)} — {e}")
+        return None
 
 """
 方法: journalctl_available(), 检测 journalctl 是否可用

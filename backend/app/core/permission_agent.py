@@ -23,9 +23,9 @@ import shutil
 
 # 风险等级 → 所需权限等级
 _RISK_PERMISSION_MAP={
-    "read_only":"ops_basic",     # 任何人可执行
-    "restricted":"ops_advanced",  # sudo 组成员可执行
-    "dangerous":"ops_admin",     # 仅 root 可执行
+    "read_only":"ops_basic",#任何人可执行
+    "restricted":"ops_advanced",#sudo 组成员可执行
+    "dangerous":"ops_admin",#仅 root 可执行
 }
 
 
@@ -40,8 +40,8 @@ _SANDBOX_USER="nobody"  # fallback: 系统自带的低权限用户
 
 # 受保护的关键进程/路径 (即使管理员也不能操作)
 _PROTECTED_PROCESSES={
-    "systemd", "sshd", "kernel", "init", "dbus-daemon",
-    "journald", "auditd", "rsyslogd", "cron", "agetty",
+    "systemd","sshd","kernel","init","dbus-daemon",
+    "journald","auditd","rsyslogd","cron","agetty",
 }
 
 _PROTECTED_PATHS={
@@ -77,7 +77,7 @@ def _current_user():
     try:
         return pwd.getpwuid(uid).pw_name
     except (KeyError, OSError):
-        return "uid:{}".format(uid)
+        return f"uid:{uid}"
 
 
 def _is_sre_agent_user_available():
@@ -103,9 +103,10 @@ def _get_sandbox_user():
 def _user_in_group(user, group_name):
     """检查指定用户是否在指定组中"""
     try:
+        user_info = pwd.getpwnam(user)
         g=grp.getgrnam(group_name)
-        return user in g.gr_mem
-    except KeyError:
+        return user in g.gr_mem or g.gr_gid == user_info.pw_gid
+    except (KeyError, OSError):
         return False
 
 
@@ -117,14 +118,14 @@ def build_sudo_command(cmd_list, target_user=None):
     if target_user is None:
         target_user = _get_sandbox_user()
         if target_user is None:
-            # 没有可用的低权限用户, 拒绝执行
+            #没有可用的低权限用户,拒绝执行
             return None
 
     current = _current_user()
     if current == target_user:
-        return list(cmd_list)  # 已经是目标用户, 无需 sudo
+        return list(cmd_list)#已经是目标用户,无需 sudo
 
-    return ["sudo", "-u", target_user, "--"] + list(cmd_list)
+    return ["sudo","-u",target_user,"--"]+list(cmd_list)
 
 
 """
@@ -134,17 +135,17 @@ def get_available_privilege_levels():
     levels=[]
     current=_current_user()
 
-    if current == "root":
-        levels.append({"user": "root", "level": "ops_admin", "available": True})
+    if current=="root":
+        levels.append({"user":"root","level":"ops_admin","available":True})
 
-    if _user_in_group(current, "sudo") or _user_in_group(current, "wheel"):
-        levels.append({"user": current, "level": "ops_advanced", "available": True})
+    if _user_in_group(current,"sudo") or _user_in_group(current,"wheel"):
+        levels.append({"user":current,"level":"ops_advanced","available":True})
 
     if _is_sre_agent_user_available():
-        levels.append({"user": _SRE_AGENT_USER, "level": "ops_basic", "available": True})
+        levels.append({"user":_SRE_AGENT_USER,"level":"ops_basic","available":True})
     else:
-        levels.append({"user": _SRE_AGENT_USER, "level": "ops_basic", "available": False,
-                    "setup_cmd": "sudo useradd -r -s /bin/false -d /nonexistent -M {}".format(_SRE_AGENT_USER)})
+        levels.append({"user":_SRE_AGENT_USER,"level":"ops_basic","available":False,
+                    "setup_cmd":f"sudo useradd -r -s /bin/false -d /nonexistent -M {_SRE_AGENT_USER}"})
 
     try:
         pwd.getpwnam(_SANDBOX_USER)
@@ -165,67 +166,68 @@ def check_permission(risk_level, user=None, target=None, action="execute"):
 
     required=_RISK_PERMISSION_MAP.get(risk_level)
     if not required:
-        return False, "未知风险等级: {}".format(risk_level), None
+        return False,f"未知风险等级: {risk_level}",None
 
     # 保护名单检查 (最高优先级)
     if target:
-        if target in _PROTECTED_PROCESSES:
-            return False, "受保护进程 '{}' 不可操作".format(target), None
-        if target in _PROTECTED_PATHS:
-            return False, "受保护路径 '{}' 不可操作".format(target), None
-        # 受限写路径检查
+        if target in _PROTECTED_PROCESSES and required != "ops_basic":
+            return False,f"受保护进程 '{target}' 不可操作",None
+        if target in _PROTECTED_PATHS and required != "ops_basic":
+            return False,f"受保护路径 '{target}' 不可操作",None
         if action in ("write", "delete"):
+            # 受限写路径检查
             for restricted in _RESTRICTED_WRITE_PATHS:
                 if target.startswith(restricted + "/") or target == restricted:
-                    return False, "路径 '{}' 在受限写目录 '{}' 下".format(target, restricted), None
+                    return False,f"路径 '{target}' 在受限写目录 '{restricted}' 下",None
 
     # ops_basic (read_only) — 任何用户可执行
-    if required == "ops_basic":
-        return True, "read_only: 放行", None
+    if required=="ops_basic":
+        return True,"read_only: 放行",None
 
     # ops_advanced (restricted) — sudo 组成员
-    if required == "ops_advanced":
-        if user == "root":
-            return True, "restricted: root 放行", _get_sandbox_user()
-        if _user_in_group(user, "sudo") or _user_in_group(user, "wheel"):
-            return True, "restricted: sudo 组成员, 建议降权到 {}".format(_get_sandbox_user()), _get_sandbox_user()
-        return False, "restricted: 需要 sudo 组成员权限 (当前用户: {})".format(user), None
+    if required=="ops_advanced":
+        if user=="root":
+            return True,"restricted: root 放行",_get_sandbox_user()
+        if _user_in_group(user,"sudo") or _user_in_group(user,"wheel"):
+            return True,f"restricted: sudo 组成员, 建议降权到 {_get_sandbox_user()}",_get_sandbox_user()
+        return False,f"restricted: 需要 sudo 组成员权限 (当前用户: {user})",None
 
     # ops_admin (dangerous) — 仅 root
-    if required == "ops_admin":
-        if user == "root":
-            return True, "dangerous: root 确认执行", _get_sandbox_user()
-        return False, "dangerous: 需要 root 权限 (当前用户: {})".format(user), None
+    if required=="ops_admin":
+        if user=="root":
+            return True,"dangerous: root 确认执行",_get_sandbox_user()
+        return False,f"dangerous: 需要 root 权限 (当前用户: {user})",None
 
-    return False, "权限不足: 需要 {}, 当前 {}".format(required, user), None
+    return False,f"权限不足: 需要 {required}, 当前 {user}",None
 
 """ 
 方法: require_confirmation(), 判断操作是否需要用户确认
 """
 def require_confirmation(risk_level):
-    return risk_level in ("restricted", "dangerous")
+    return risk_level in ("restricted","dangerous")
 
 """ 
 方法: validate_path(), 校验操作路径是否安全
 """
 def validate_path(path, action="read"):
     # 规范化路径 (消除 ../ 等)
-    normalized = os.path.normpath(os.path.abspath(path))
+    normalized=os.path.normpath(os.path.abspath(path))
 
-    # 保护名单
-    if normalized in _PROTECTED_PATHS:
-        return False, "路径 '{}' 在保护名单内".format(path)
-    for protected in _PROTECTED_PATHS:
-        if normalized.startswith(protected + "/"):
-            return False, "路径 '{}' 位于保护目录 '{}' 下".format(path, protected)
+    # 保护名单：仅写/删操作禁止，读操作允许
+    if action in ("write", "delete"):
+        if normalized in _PROTECTED_PATHS:
+            return False,f"路径 '{path}' 在保护名单内"
+        for protected in _PROTECTED_PATHS:
+            if normalized.startswith(protected + "/"):
+                return False,f"路径 '{path}' 位于保护目录 '{protected}' 下"
 
     # 受限写路径 (仅写操作检查)
     if action in ("write", "delete"):
         for restricted in _RESTRICTED_WRITE_PATHS:
             if normalized.startswith(restricted + "/") or normalized == restricted:
-                return False, "路径 '{}' 为受限写目录".format(path)
+                return False,f"路径 '{path}' 为受限写目录"
 
-    return True, "路径安全"
+    return True,"路径安全"
 
 """ 
 方法: get_permission_level(), 返回当前用户的权限等级
@@ -233,23 +235,13 @@ def validate_path(path, action="read"):
 #方法: 返回当前用户的权限等级
 def get_permission_level():
     user=_current_user()
-    if user == "root":
+    if user=="root":
         return "ops_admin"
 
-    try:
-        sudo_group = grp.getgrnam("sudo")
-        if user in sudo_group.gr_mem:
-            return "ops_advanced"
-    except KeyError:
-        pass
-    try:
-        wheel_group = grp.getgrnam("wheel")
-        if user in wheel_group.gr_mem:
-            return "ops_advanced"
-    except KeyError:
-        pass
+    if _user_in_group(user,"sudo") or _user_in_group(user,"wheel"):
+        return "ops_advanced"
 
-    if _is_sre_agent_user_available() and user == _SRE_AGENT_USER:
+    if _is_sre_agent_user_available() and user==_SRE_AGENT_USER:
         return "ops_basic"
 
     return "ops_basic"
@@ -264,19 +256,19 @@ def permission_summary():
     sandbox=_get_sandbox_user()
 
     return {
-        "user": user,
-        "uid": os.getuid(),
-        "gid": os.getgid(),
-        "level": level,
-        "can_read_only": True,
-        "can_restricted": level in ("ops_advanced", "ops_admin"),
-        "can_dangerous": level == "ops_admin",
-        "sandbox_user": sandbox,
-        "sandbox_available": sandbox is not None,
-        "sre_agent_user_available": _is_sre_agent_user_available(),
-        "protected_processes_count": len(_PROTECTED_PROCESSES),
-        "protected_paths_count": len(_PROTECTED_PATHS),
-        "privilege_downgrade_supported": shutil.which("sudo") is not None,
+        "user":user,
+        "uid":os.getuid(),
+        "gid":os.getgid(),
+        "level":level,
+        "can_read_only":True,
+        "can_restricted":level in ("ops_advanced","ops_admin"),
+        "can_dangerous":level=="ops_admin",
+        "sandbox_user":sandbox,
+        "sandbox_available":sandbox is not None,
+        "sre_agent_user_available":_is_sre_agent_user_available(),
+        "protected_processes_count":len(_PROTECTED_PROCESSES),
+        "protected_paths_count":len(_PROTECTED_PATHS),
+        "privilege_downgrade_supported":shutil.which("sudo") is not None,
     }
 
 
@@ -291,20 +283,19 @@ def setup_instructions():
         "steps": [
             {
                 "step": 1,
-                "command": "sudo useradd -r -s /bin/false -d /nonexistent -M {}".format(_SRE_AGENT_USER),
-                "description": "创建系统用户 {} (无登录权限, 无家目录)".format(_SRE_AGENT_USER),
+                "command":f"sudo useradd -r -s /bin/false -d /nonexistent -M {_SRE_AGENT_USER}",
+                "description":f"创建系统用户 {_SRE_AGENT_USER} (无登录权限, 无家目录)",
             },
             {
                 "step": 2,
-                "command": "sudo usermod -aG {} {}".format(_SRE_AGENT_USER, _current_user()),
-                "description": "可选: 将当前用户加入 {} 组以便管理".format(_SRE_AGENT_USER),
+                "command":f"sudo usermod -aG {_SRE_AGENT_USER} {_current_user()}",
+                "description":f"可选: 将当前用户加入 {_SRE_AGENT_USER} 组以便管理",
             },
             {
                 "step": 3,
-                "command": "sudo visudo -f /etc/sudoers.d/sre-agent",
-                "description": "配置 sudo 策略: {} ALL=({}) NOPASSWD: /usr/bin/systemctl status, /usr/bin/journalctl".format(_current_user(), _SRE_AGENT_USER),
+                "command":"sudo visudo -f /etc/sudoers.d/sre-agent",
+                "description":f"配置 sudo 策略: {_current_user()} ALL=({_SRE_AGENT_USER}) NOPASSWD: /usr/bin/systemctl status, /usr/bin/journalctl",
             },
         ],
-        "verification": "id {}".format(_SRE_AGENT_USER),
+        "verification":f"id {_SRE_AGENT_USER}",
     }
-

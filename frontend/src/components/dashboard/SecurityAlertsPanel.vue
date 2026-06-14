@@ -8,10 +8,9 @@
         安全告警
       </h3>
       <span v-if="hasNoAlerts" class="panel-badge safe">无告警</span>
-      <span v-else class="panel-badge warn">{{ alertCount }} 条</span>
+      <span v-else class="panel-badge warn">{{ alerts.length }} 条</span>
     </div>
 
-    <!-- 无告警 -->
     <div v-if="hasNoAlerts" class="empty-state">
       <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="1.5" stroke-linecap="round">
         <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
@@ -20,12 +19,23 @@
       <span>当前无安全告警</span>
     </div>
 
-    <!-- 有告警 -->
     <div v-else class="alerts-body">
-      <!-- 登录失败 -->
       <div class="alert-section">
         <span class="section-label">安全扫描结果</span>
-        <p class="text-dim">请通过智能对话中的 MCP 安全工具获取详细安全审计结果</p>
+        <div class="alert-list">
+          <div
+            v-for="alert in alerts"
+            :key="`${alert.tool}-${alert.title}-${alert.detail}`"
+            class="alert-item"
+            :class="alert.severity"
+          >
+            <div class="alert-head">
+              <span class="alert-tool">{{ alert.title }}</span>
+              <span class="alert-severity">{{ severityLabel(alert.severity) }}</span>
+            </div>
+            <p class="alert-detail">{{ alert.detail }}</p>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -37,19 +47,19 @@ import { useSystemStore } from '@/stores/system'
 
 const store = useSystemStore()
 
-const topIps = computed(() => {
-  // 认证失败详情来自 MCP security_auth_failures 工具结果
-  // 当前由 DashboardView 统一展示
-  return [] as { ip: string; count: number; user: string }[]
-})
+const alerts = computed(() => store.snapshot.securityAlerts ?? [])
+const hasNoAlerts = computed(() => alerts.value.length === 0)
 
-const hasNoAlerts = computed(() => true)
-const alertCount = computed(() => 0)
-
-function connColor(_n: number): string {
-  return 'safe'
+function severityLabel(severity: 'info' | 'warning' | 'danger'): string {
+  switch (severity) {
+    case 'danger':
+      return '高危'
+    case 'warning':
+      return '警告'
+    default:
+      return '提示'
+  }
 }
-</script>
 </script>
 
 <style scoped>
@@ -91,7 +101,6 @@ function connColor(_n: number): string {
 .panel-badge.safe { color: var(--color-safe); background: var(--color-safe-soft); }
 .panel-badge.warn { color: var(--color-warning); background: var(--color-warning-soft); }
 
-/* ---- Empty ---- */
 .empty-state {
   display: flex;
   flex-direction: column;
@@ -103,7 +112,6 @@ function connColor(_n: number): string {
   font-size: 13px;
 }
 
-/* ---- Alerts ---- */
 .alerts-body {
   padding: 16px 20px;
 }
@@ -124,76 +132,45 @@ function connColor(_n: number): string {
   margin-bottom: 10px;
 }
 
-/* IP list */
-.ip-list {
+.alert-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-}
-.ip-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 6px 10px;
-  background: var(--bg-elevated);
-  border-radius: var(--radius-sm);
-  font-size: 13px;
-}
-.ip-rank {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-tertiary);
-  width: 16px;
-  text-align: center;
-}
-.ip-addr {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  color: var(--text-primary);
-  flex: 1;
-}
-.ip-user {
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-.ip-count {
-  font-size: 13px;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  min-width: 36px;
-  text-align: right;
-}
-
-/* Network stats */
-.network-stats {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
   gap: 8px;
 }
-.net-stat {
-  text-align: center;
+.alert-item {
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  border: 1px solid transparent;
   background: var(--bg-elevated);
-  border-radius: var(--radius-md);
-  padding: 12px 8px;
 }
-.net-num {
-  display: block;
-  font-size: 20px;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
+.alert-item.warning {
+  border-color: var(--color-warning-soft);
+}
+.alert-item.danger {
+  border-color: var(--color-danger-soft);
+}
+.alert-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.alert-tool {
+  font-size: 13px;
+  font-weight: 600;
   color: var(--text-primary);
-  line-height: 1.2;
 }
-.net-num.dim {
-  color: var(--text-secondary);
-  font-size: 16px;
-}
-.net-label {
-  display: block;
+.alert-severity {
   font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
   color: var(--text-tertiary);
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
-  margin-top: 4px;
+}
+.alert-detail {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-secondary);
 }
 </style>

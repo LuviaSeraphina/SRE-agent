@@ -11,6 +11,13 @@ import { ref, computed } from 'vue'
 import { useChatStore } from './chat'
 
 /** 系统概览快照（从 MCP 工具结果提取） */
+export interface SecurityAlert {
+  tool: string
+  title: string
+  detail: string
+  severity: 'info' | 'warning' | 'danger'
+}
+
 export interface SystemSnapshot {
   hostname: string
   os: string
@@ -32,6 +39,7 @@ export interface SystemSnapshot {
   tcpEstablished: number
   listeningPorts: number
   authFailures: number
+  securityAlerts: SecurityAlert[]
 }
 
 export const useSystemStore = defineStore('system', () => {
@@ -50,9 +58,19 @@ export const useSystemStore = defineStore('system', () => {
   function extractFromChat() {
     const chatStore = useChatStore()
     const msgs = chatStore.messages
-    if (msgs.length === 0) return
+    if (msgs.length === 0) {
+      snapshot.value = {}
+      lastUpdate.value = Date.now()
+      return
+    }
 
     const snap: Partial<SystemSnapshot> = {}
+    const alerts: SecurityAlert[] = []
+
+    const pushAlert = (tool: string, title: string, detail: string, severity: SecurityAlert['severity']) => {
+      if (!detail) return
+      alerts.push({ tool, title, detail, severity })
+    }
 
     for (const msg of msgs) {
       if (!msg.tool_calls) continue
@@ -99,14 +117,22 @@ export const useSystemStore = defineStore('system', () => {
             break
 
           case 'network_connections_summary':
-            if (data.states && typeof data.states === 'object') {
-              snap.tcpEstablished = (data.states as Record<string, number>).ESTABLISHED || 0
+            {
+              const states = (data.all_states || data.states || {}) as Record<string, number>
+              snap.tcpEstablished =
+                (data.established as number | undefined) ??
+                (data.estab as number | undefined) ??
+                states.ESTABLISHED ??
+                states.ESTAB ??
+                0
             }
             break
 
           case 'network_listening_ports':
-            if (data.port && Array.isArray(data.port)) {
-              snap.listeningPorts = (data.port as unknown[]).length
+            if (Array.isArray(data.port)) {
+              snap.listeningPorts = data.port.length
+            } else if (Array.isArray(data.ports)) {
+              snap.listeningPorts = data.ports.length
             } else if (summary.total !== undefined) {
               snap.listeningPorts = summary.total as number
             }
@@ -118,10 +144,26 @@ export const useSystemStore = defineStore('system', () => {
                 (a, b) => a + b,
                 0,
               )
+            } else if (summary.total_failures !== undefined) {
+              snap.authFailures = summary.total_failures as number
             }
             break
         }
+
+        if (summary.alert || summary.alert_reason) {
+          const reason = (summary.alert_reason as string) || (summary.error as string) || ''
+          pushAlert(
+            tc.tool_name,
+            tc.tool_name,
+            reason,
+            summary.alert ? 'warning' : 'info',
+          )
+        }
       }
+    }
+
+    if (alerts.length > 0) {
+      snap.securityAlerts = alerts
     }
 
     if (Object.keys(snap).length > 0) {

@@ -113,7 +113,11 @@
           <span class="overview-value" :class="{ 'text-danger': snap.authFailures > 10 }">{{ snap.authFailures }} 次</span>
         </div>
       </div>
+
     </div>
+
+    <!-- ====== 安全告警面板 ====== -->
+    <SecurityAlertsPanel v-if="securityAlerts.length > 0" />
 
     <!-- ====== 空状态 ====== -->
     <div v-if="!hasData" class="empty-dashboard">
@@ -147,9 +151,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, watch } from 'vue'
 import { useSystemStore } from '@/stores/system'
 import { useChatStore } from '@/stores/chat'
+import SecurityAlertsPanel from '@/components/dashboard/SecurityAlertsPanel.vue'
 
 const systemStore = useSystemStore()
 const chatStore = useChatStore()
@@ -157,6 +162,7 @@ const chatStore = useChatStore()
 const snap = computed(() => systemStore.snapshot)
 const hasData = computed(() => systemStore.hasData)
 const healthScore = computed(() => chatStore.lastHealthScore)
+const securityAlerts = computed(() => snap.value.securityAlerts ?? [])
 
 // 状态颜色
 function statusClass(pct: number): string {
@@ -180,9 +186,11 @@ const gradeClass = computed(() => {
   return 'danger'
 })
 
-onMounted(() => {
-  systemStore.extractFromChat()
-})
+watch(
+  () => [chatStore.currentSessionId, chatStore.messages],
+  () => systemStore.extractFromChat(),
+  { immediate: true, deep: true },
+)
 </script>
 
 <style scoped>

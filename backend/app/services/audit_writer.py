@@ -50,7 +50,7 @@ async def save_conversation(
             timestamp=datetime.now(timezone.utc),
         ))
 
-    await db.commit()
+    await db.flush()
 
 
 """
@@ -76,4 +76,23 @@ async def save_audit_log(
         stage_execution=stages[4] if len(stages)>4 else None,
     )
     db.add(audit)
-    await db.commit()
+    await db.flush()
+
+
+"""
+方法: save_chat_artifacts(), 以单事务保存对话与审计日志
+
+这是 chat API 的唯一落库入口，保证 Conversation / Message / AuditLog 要么同时成功，要么同时失败。
+"""
+async def save_chat_artifacts(
+    db: AsyncSession,
+    session_id: str,
+    messages: list,
+    title: str,
+    user: str,
+    risk_level: str,
+    stages: list,
+):
+    async with db.begin():
+        await save_conversation(db, session_id, messages, title)
+        await save_audit_log(db, session_id, user, risk_level, stages)

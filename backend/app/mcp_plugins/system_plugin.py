@@ -45,7 +45,7 @@ def _detect_platform():
             break
 
     if not info.get("display_name"):
-        info["display_name"]="{} {}".format(platform.system(), platform.release())
+        info["display_name"]=f"{platform.system()} {platform.release()}"
 
     #检测包管理器
     if os.path.exists("/usr/bin/dnf"):
@@ -125,7 +125,7 @@ def system_load():
 
         #过载判定: 1分钟负载超过 CPU 核心数
         overload=load1>cpu_count
-        reason="1分钟负载({:.2f})超过 CPU 核心数({}), 系统过载".format(load1, cpu_count) if overload else ""
+        reason=f"1分钟负载({load1:.2f})超过 CPU 核心数({cpu_count}), 系统过载" if overload else ""
 
         return _make_response("system_load",
             data={
@@ -152,10 +152,12 @@ def system_load():
 def system_failed_services():
     try:
         output=_run_command(["systemctl", "--failed", "--no-legend", "--no-pager"], timeout=10)
+        if output is None:
+            return _error_response("system_failed_services","systemctl --failed 执行失败")
         if not output:
             return _make_response("system_failed_services",
-                data={"services": []},
-                summary={"total_failed": 0, "alert": False},
+                data={"services":[]},
+                summary={"total_failed":0,"alert":False},
             )
 
         #解析失败服务列表
@@ -164,18 +166,18 @@ def system_failed_services():
             parts=line.split()
             if len(parts)>=2 and parts[0]:
                 services.append({
-                    "name": parts[0],
-                    "load": parts[1] if len(parts)>1 else "unknown",
-                    "active": parts[2] if len(parts)>2 else "unknown",
-                    "description": " ".join(parts[4:]) if len(parts)>4 else "",
+                    "name":parts[0],
+                    "load":parts[1] if len(parts)>1 else "unknown",
+                    "active":parts[2] if len(parts)>2 else "unknown",
+                    "description":" ".join(parts[4:]) if len(parts)>4 else "",
                 })
 
         return _make_response("system_failed_services",
             data={"services": services},
             summary={
-                "total_failed": len(services),
-                "alert": len(services)>0,
-                "alert_reason": "{} 个系统服务处于失败状态".format(len(services)) if services else "",
+                "total_failed":len(services),
+                "alert":len(services)>0,
+                "alert_reason":f"{len(services)} 个系统服务处于失败状态" if services else "",
             },
         )
     except Exception as e:
@@ -210,7 +212,7 @@ def system_boot_params():
                 "params_count": len(params.split()),
                 "missing_security_params": len(missing),
                 "alert": len(missing)>0,
-                "alert_reason": "缺失安全启动参数: {}".format(", ".join(missing)) if missing else "",
+                "alert_reason":f"缺失安全启动参数: {', '.join(missing)}" if missing else "",
             },
         )
     except Exception as e:
@@ -228,12 +230,16 @@ def system_package_updates():
 
         if pkg=="dnf":
             result=_run_command(["dnf", "check-update", "--security"], timeout=30)
+            if result is None:
+                return _error_response("system_package_updates","dnf check-update 执行失败")
             lines=[l for l in result.split("\n") if l.strip() and not l.startswith("Last metadata")]
             #排除空行和标题行
             updates=[l for l in lines if "." in l and " " in l]
             count=len(updates)
         elif pkg=="apt":
             result=_run_command(["apt", "list", "--upgradable"], timeout=15)
+            if result is None:
+                return _error_response("system_package_updates","apt list --upgradable 执行失败")
             lines=[l for l in result.split("\n") if "/" in l and "upgradable" not in l.lower()]
             count=len(lines)
         else:
@@ -247,7 +253,7 @@ def system_package_updates():
             summary={
                 "count": count,
                 "alert": count > 10,
-                "alert_reason": "{} 个安全更新待安装".format(count) if count > 10 else "",
+                "alert_reason":f"{count} 个安全更新待安装" if count>10 else "",
             },
         )
     except Exception as e:

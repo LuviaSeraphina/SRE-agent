@@ -71,17 +71,19 @@ def _get_info(result):
 def network_listening_ports():
     try:
         result=_run_command(["ss","-tlnp"])
+        if result is None:
+            return _error_response("network_listening_ports","ss -tlnp 执行失败")
         if not result:
             return _make_response("network_listening_ports",
-                                data={"ports": []},
-                                summary={"total": 0}
+                                data={"ports":[]},
+                                summary={"total":0}
                                 )
         
         ports=_get_info(result)
             
         return _make_response("network_listening_ports",
-                            data={"port": ports},
-                            summary={"total": len(ports)}
+                            data={"port":ports},
+                            summary={"total":len(ports)}
                             )
     except Exception as e:
         return _error_response("network_listening_ports", e)
@@ -117,11 +119,11 @@ def _check_connection_alert(states):
     alert=close_wait>10 or syn_sent>20 or fin_wait1>20
     reasons=[]
     if close_wait>10:
-        reasons.append("CLOSE_WAIT({})过高, 疑似应用层 socket 未正确 close".format(close_wait))
+        reasons.append(f"CLOSE_WAIT({close_wait})过高, 疑似应用层 socket 未正确 close")
     if syn_sent>20:
-        reasons.append("SYN_SENT({})过高, 可能存在大量对外连接失败或扫描".format(syn_sent))
+        reasons.append(f"SYN_SENT({syn_sent})过高, 可能存在大量对外连接失败或扫描")
     if fin_wait1>20:
-        reasons.append("FIN_WAIT1({})过高, 远端主动断开后本地未及时确认".format(fin_wait1))
+        reasons.append(f"FIN_WAIT1({fin_wait1})过高, 远端主动断开后本地未及时确认")
     return alert, "; ".join(reasons) if reasons else ""
 
 
@@ -132,10 +134,12 @@ def _check_connection_alert(states):
 def network_connections_summary():
     try:
         result=_run_command(["ss", "-tan"])
+        if result is None:
+            return _error_response("network_connections_summary","ss -tan 执行失败")
         if not result:
             return _make_response("network_connections_summary",
-                data={"established": 0, "time_wait": 0, "close_wait": 0, "listen": 0},
-                summary={"total": 0, "alert": False},
+                data={"established":0,"time_wait":0,"close_wait":0,"listen":0},
+                summary={"total":0,"alert":False},
             )
 
         #统计各状态连接数
@@ -148,9 +152,9 @@ def network_connections_summary():
         return _make_response("network_connections_summary",
             data=data,
             summary={
-                "total": sum(states.values()),
-                "alert": alert,
-                "alert_reason": reason,
+                "total":sum(states.values()),
+                "alert":alert,
+                "alert_reason":reason,
             },
         )
     except Exception as e:
@@ -212,10 +216,12 @@ def _parse_ip_stats(result):
 def network_interface_stats():
     try:
         result=_run_command(["ip", "-s", "link"])
+        if result is None:
+            return _error_response("network_interface_stats","ip -s link 执行失败")
         if not result:
             return _make_response("network_interface_stats",
-                data={"interfaces": []},
-                summary={"total_interfaces": 0, "active": 0, "alert": False},
+                data={"interfaces":[]},
+                summary={"total_interfaces":0,"active":0,"alert":False},
             )
 
         #解析网卡数据
@@ -230,12 +236,12 @@ def network_interface_stats():
         )
 
         return _make_response("network_interface_stats",
-            data={"interfaces": interfaces},
+            data={"interfaces":interfaces},
             summary={
-                "total_interfaces": len(interfaces),
-                "active": len(active),
-                "alert": has_error,
-                "alert_reason": "检测到网卡错误或丢包, 请检查" if has_error else "",
+                "total_interfaces":len(interfaces),
+                "active":len(active),
+                "alert":has_error,
+                "alert_reason":"检测到网卡错误或丢包, 请检查" if has_error else "",
             },
         )
     except Exception as e:
@@ -266,6 +272,8 @@ def network_firewall_audit():
         if nft_found:
             fw_type="nftables"
             result=_run_command(["nft", "list", "ruleset"], timeout=10)
+            if result is None:
+                return _error_response("network_firewall_audit","nft list ruleset 执行失败")
             lines=result.split("\n") if result else []
             rule_count=len([l for l in lines if l.strip()])
 
@@ -273,6 +281,8 @@ def network_firewall_audit():
             fw_type="iptables"
             for table in ["filter", "nat", "mangle"]:
                 result=_run_command(["iptables", "-t", table, "-L", "-n"], timeout=5)
+                if result is None:
+                    return _error_response("network_firewall_audit",f"iptables -t {table} -L -n 执行失败")
                 if result:
                     lines=[l for l in result.split("\n") if l.strip().startswith(("ACCEPT", "DROP", "REJECT", "Chain"))]
                     rules.extend(lines)
@@ -280,14 +290,14 @@ def network_firewall_audit():
 
         return _make_response("network_firewall_audit",
             data={
-                "firewall_type": fw_type,
-                "rule_count": rule_count,
+                "firewall_type":fw_type,
+                "rule_count":rule_count,
             },
             summary={
-                "type": fw_type,
-                "rules": rule_count,
-                "alert": fw_type=="unknown",
-                "alert_reason": "未检测到防火墙" if fw_type=="unknown" else "",
+                "type":fw_type,
+                "rules":rule_count,
+                "alert":fw_type=="unknown",
+                "alert_reason":"未检测到防火墙" if fw_type=="unknown" else "",
             },
         )
     except Exception as e:
@@ -303,6 +313,8 @@ def network_tcp_retrans():
         retrans_total=0
         conn_count=0
         result=_run_command(["ss", "-ti"], timeout=5)
+        if result is None:
+            return _error_response("network_tcp_retrans","ss -ti 执行失败")
         if result:
             for line in result.split("\n"):
                 if "retrans:" in line:
@@ -315,14 +327,14 @@ def network_tcp_retrans():
 
         return _make_response("network_tcp_retrans",
             data={
-                "connections_checked": conn_count if result else 0,
-                "retransmissions": retrans_total if result else 0,
-                "retrans_rate_percent": retrans_rate,
+                "connections_checked":conn_count if result else 0,
+                "retransmissions":retrans_total if result else 0,
+                "retrans_rate_percent":retrans_rate,
             },
             summary={
-                "rate": retrans_rate,
-                "alert": retrans_rate > 2.0,
-                "alert_reason": "TCP 重传率 {}% > 2%, 网络可能异常".format(retrans_rate) if retrans_rate > 2.0 else "",
+                "rate":retrans_rate,
+                "alert":retrans_rate>2.0,
+                "alert_reason":f"TCP 重传率 {retrans_rate}% > 2%, 网络可能异常" if retrans_rate>2.0 else "",
             },
         )
     except Exception as e:
