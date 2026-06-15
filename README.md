@@ -50,15 +50,8 @@
 # 一键部署 (推荐)
 bash scripts/deploy.sh
 
-# 或手动:
-# 后端
-cd backend
-pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8001
-
-# 前端
-cd frontend
-npm install && npm run dev
+# 部署后启动前后端
+bash scripts/start.sh
 ```
 
 | 服务 | 地址 | 用途 |
