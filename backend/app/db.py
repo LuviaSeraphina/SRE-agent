@@ -66,8 +66,47 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             raise
 
 """
-方法: init_db(), 首次启动时创建所有表 — 生产环境应使用 Alembic 迁移
+方法: _migrate_db(), 数据库迁移 — 为已有表添加缺失的列
+
+create_all 只建新表, 不修改已有表。模型新增列时必须在此处
+补充 ALTER TABLE 逻辑, 确保新旧数据库均能正常启动。
+
+当前迁移:
+v2 — audit_logs 新增 is_anomaly / anomaly_type 列
+"""
+def _migrate_db(conn):
+    #获取方言 — SQLite 用 PRAGMA, PostgreSQL 用 information_schema
+    dialect=conn.dialect.name
+
+    if dialect=="sqlite":
+        #检查 audit_logs 是否有 is_anomaly 列
+        result=conn.exec_driver_sql("PRAGMA table_info(audit_logs)")
+        cols={row[1] for row in result.fetchall()}
+        if "is_anomaly" not in cols:
+            conn.exec_driver_sql(
+                "ALTER TABLE audit_logs ADD COLUMN is_anomaly BOOLEAN NOT NULL DEFAULT 0"
+            )
+        if "anomaly_type" not in cols:
+            conn.exec_driver_sql(
+                "ALTER TABLE audit_logs ADD COLUMN anomaly_type VARCHAR(32) NOT NULL DEFAULT 'none'"
+            )
+        #索引 — SQLite 的 IF NOT EXISTS 从 3.25 开始支持
+        conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS idx_audit_anomaly ON audit_logs(is_anomaly)"
+        )
+        conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS idx_audit_atype ON audit_logs(anomaly_type)"
+        )
+
+    #后续新增列在此追加 elif dialect=="xxx": 分支
+
+
+"""
+方法: init_db(), 首次启动时创建所有表 + 执行迁移
+
+生产环境应使用 Alembic 管理迁移, 此处的 _migrate_db 为轻量级替代方案。
 """
 async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await conn.run_sync(_migrate_db)
