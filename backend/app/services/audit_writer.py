@@ -56,7 +56,9 @@ async def save_conversation(
 """
 方法: save_audit_log(), 写入五阶段审计日志
 
-stages: 5 元素列表或字典 [stage_input, stage_perception, stage_reasoning, stage_validation, stage_execution]
+v2: 新增 is_anomaly / anomaly_type 参数
+
+stages: 5 元素列表 [stage_input, stage_perception, stage_reasoning, stage_validation, stage_execution]
 """
 async def save_audit_log(
     db: AsyncSession,
@@ -64,11 +66,15 @@ async def save_audit_log(
     user: str,
     risk_level: str,
     stages: list,
+    is_anomaly: bool=False,
+    anomaly_type: str="none",
 ):
     audit=AuditLog(
         session_id=session_id,
         user=user,
         risk_level=risk_level,
+        is_anomaly=is_anomaly,
+        anomaly_type=anomaly_type,
         stage_input=stages[0] if len(stages)>0 else {},
         stage_perception=stages[1] if len(stages)>1 else None,
         stage_reasoning=stages[2] if len(stages)>2 else None,
@@ -76,6 +82,36 @@ async def save_audit_log(
         stage_execution=stages[4] if len(stages)>4 else None,
     )
     db.add(audit)
+    await db.flush()
+
+
+"""
+方法: save_audit_logs_batch(), 批量写入多条审计日志 (每个工具独立一条)
+
+v2: 支持 one-audit-per-tool 模式, 每条记录有独立的 stage_execution 数据
+"""
+async def save_audit_logs_batch(
+    db: AsyncSession,
+    session_id: str,
+    user: str,
+    risk_level: str,
+    audit_items: list,  #[{stages, is_anomaly, anomaly_type}, ...]
+):
+    for item in audit_items:
+        stages=item.get("stages",[])
+        audit=AuditLog(
+            session_id=session_id,
+            user=user,
+            risk_level=risk_level,
+            is_anomaly=item.get("is_anomaly",False),
+            anomaly_type=item.get("anomaly_type","none"),
+            stage_input=stages[0] if len(stages)>0 else {},
+            stage_perception=stages[1] if len(stages)>1 else None,
+            stage_reasoning=stages[2] if len(stages)>2 else None,
+            stage_validation=stages[3] if len(stages)>3 else None,
+            stage_execution=stages[4] if len(stages)>4 else None,
+        )
+        db.add(audit)
     await db.flush()
 
 

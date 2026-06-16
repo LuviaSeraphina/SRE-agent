@@ -8,9 +8,11 @@
 - 4. validation — 安全校验 (命中规则 + 风险评分 + 决策)
 - 5. execution  — 执行结果 (实际操作 + 退出码 + 输出 + 耗时)
 
+v2: 新增 is_anomaly / anomaly_type 列, 替代 JSON 文本搜索, 支持索引加速
+
 对应前端类型: AuditLog, StageInput, StagePerception, StageReasoning, StageValidation, StageExecution
 """
-from sqlalchemy import Column, String, DateTime, func
+from sqlalchemy import Column, String, DateTime, Boolean, func
 from sqlalchemy.types import JSON
 from app.models.base import Base
 from app.models._utils import _new_uuid, _utcnow
@@ -26,8 +28,11 @@ class AuditLog(Base):
     user=Column(String(128), nullable=False, default="anonymous", index=True)
     risk_level=Column(String(32), nullable=False, index=True)  #read_only / restricted / dangerous
 
+    is_anomaly=Column(Boolean, nullable=False, default=False, index=True)
+    anomaly_type=Column(String(32), nullable=False, default="none", index=True)
+    #取值: none / security_blocked / tool_error / jailbreak_blocked / injection_blocked / dangerous_blocked
+
     #审计时间 (对话结束时间)
-    
     timestamp=Column(DateTime, nullable=False, default=_utcnow)
 
     #---- 五阶段 (JSON) ----
@@ -38,7 +43,7 @@ class AuditLog(Base):
 
     #阶段 2: 感知环境
     stage_perception=Column(JSON, nullable=True)
-    #{"tools_called": ["disk_inspect", "process_inspect"], "snapshot_summary": "..."}
+    #{"tools_called": ["disk_inspect"], "snapshot_summary": "..."}
 
     #阶段 3: 推理决策
     stage_reasoning=Column(JSON, nullable=True)
@@ -50,10 +55,11 @@ class AuditLog(Base):
 
     #阶段 5: 执行结果
     stage_execution=Column(JSON, nullable=True)
-    #{"action_taken": "...", "exit_code": 0, "stdout": "...", "stderr": "...", "duration_ms": 120}
+    #{"action_taken": "...", "exit_code": 0, "stdout": "...", "stderr": "...", "duration_ms": 120,
+    # "tool_executions": [...], "causal_chain": {...}}
 
     #元数据
     created_at=Column(DateTime, server_default=func.now())
 
     def __repr__(self) -> str:
-        return f"<AuditLog {self.id[:8]}... risk={self.risk_level}>"
+        return f"<AuditLog {self.id[:8]}... risk={self.risk_level} anomaly={self.is_anomaly}>"
