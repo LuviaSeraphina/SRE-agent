@@ -50,8 +50,8 @@ function onSelect(item: { id: string }) {
   selectedId.value = item.id
 }
 
-function onFilterChange(params: { keyword: string; riskLevel: string }) {
-  store.setFilter({ keyword: params.keyword, risk_level: params.riskLevel as any })
+function onFilterChange(params: { keyword: string; riskLevel: string; anomaly: boolean }) {
+  store.setFilter({ keyword: params.keyword, risk_level: params.riskLevel as any, anomaly: params.anomaly })
   selectedId.value = null
   store.loadLogs()
 }

@@ -85,22 +85,6 @@ export interface ToolCall {
 
 // ========== 审计日志模型（对齐 AuditLog 5 阶段） ==========
 
-/** 审计日志 */
-export interface AuditLog {
-  id: string
-  timestamp: string
-  user: string
-  session_id: string
-  risk_level: RiskLevel
-  stages: [
-    StageInput,
-    StagePerception,
-    StageReasoning,
-    StageValidation,
-    StageExecution,
-  ]
-}
-
 /** 阶段 1 — 接收指令 */
 export interface StageInput {
   raw_input: string
@@ -129,13 +113,114 @@ export interface StageValidation {
   reason: string
 }
 
-/** 阶段 5 — 执行结果 */
+/** 单个工具执行记录 (阶段 5 内的 tool_executions) */
+export interface ToolExecutionRecord {
+  tool_name: string
+  status: ToolCallStatus
+  is_anomaly: boolean
+  exit_code: number
+  output_summary: string
+  detail_keys: string[]
+}
+
+/** 异常类型 */
+export type AnomalyType =
+  | 'none'
+  | 'security_blocked'
+  | 'tool_error'
+  | 'jailbreak_blocked'
+  | 'injection_blocked'
+  | 'dangerous_blocked'
+
+/** 阶段 5 — 执行结果 (v2.1 增强) */
 export interface StageExecution {
   action_taken: string
   exit_code: number | null
   stdout: string
   stderr: string
   duration_ms: number
+  // v2.1: 真实工具执行数据
+  tool_executions?: ToolExecutionRecord[]
+  is_anomaly?: boolean
+  anomaly_type?: AnomalyType
+  // v2.1: 因果链 (异常回溯核心数据)
+  causal_chain?: CausalChain
+}
+
+// ========== 异常回溯 (v2.1 新增) ==========
+
+/** 因果链中的单步 */
+export interface CausalStep {
+  description: string
+  [key: string]: unknown
+}
+
+/** 因果链: 5 阶段间的数据流转关系 */
+export interface CausalChain {
+  input_to_perception: CausalStep & { triggered_tools: string[] }
+  perception_to_reasoning: CausalStep & { perception_used: string[]; llm_output_preview: string }
+  reasoning_to_validation: CausalStep & { rules_hit: string[]; decision: string; risk_score: number }
+  validation_to_execution: CausalStep & { all_tools_result: ToolExecutionRecord[]; is_anomaly: boolean; anomaly_type: string }
+  traceback_guidance?: TracebackGuidance
+}
+
+/** 异常回溯指引 */
+export interface TracebackGuidance {
+  title: string
+  anomaly_type: string
+  root_cause_stage: string
+  root_cause: string
+  trace_path: string
+  suggestion: string
+  llm_reasoning_preview?: string
+}
+
+/** 审计日志 (v2.1 增强 — 顶层增加异常标记) */
+export interface AuditLog {
+  id: string
+  timestamp: string
+  user: string
+  session_id: string
+  risk_level: RiskLevel
+  // v2.1: 顶层异常标记
+  is_anomaly?: boolean
+  anomaly_type?: AnomalyType
+  stages: [
+    StageInput,
+    StagePerception,
+    StageReasoning,
+    StageValidation,
+    StageExecution,
+  ]
+}
+
+/** 回溯 API 响应 */
+export interface TracebackResponse {
+  audit_log: AuditLog
+  is_anomaly: boolean
+  anomaly_type: string
+  causal_chain: CausalChain | null
+  traceback_guidance: TracebackGuidance | null
+  related_ops: RelatedOp[]
+  related_ops_count: number
+}
+
+/** 关联操作 (同会话的其他审计记录) */
+export interface RelatedOp {
+  id: string
+  timestamp: string
+  risk_level: string
+  input_preview: string
+  is_anomaly: boolean
+  anomaly_type: string
+}
+
+/** 会话级审计汇总 */
+export interface SessionAuditSummary {
+  session_id: string
+  total_ops: number
+  anomaly_count: number
+  items: AuditLog[]
 }
 
 // ========== SSE 事件载荷 ==========

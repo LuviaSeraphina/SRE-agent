@@ -20,6 +20,7 @@ export const useAuditStore = defineStore('audit', () => {
     size: 20,
     risk_level: '' as RiskLevel | '',
     keyword: '',
+    anomaly: false,
   })
 
   // 当前请求的 AbortController，用于组件卸载时取消
@@ -40,6 +41,7 @@ export const useAuditStore = defineStore('audit', () => {
           size: filter.value.size,
           risk_level: filter.value.risk_level || undefined,
           keyword: filter.value.keyword || undefined,
+          anomaly: filter.value.anomaly || undefined,
         },
         abortController.signal,
       )

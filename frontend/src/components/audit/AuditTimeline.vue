@@ -20,10 +20,12 @@
         v-for="item in items"
         :key="item.id"
         class="timeline-row"
-        :class="{ selected: item.id === selectedId }"
+        :class="{ selected: item.id === selectedId, 'row-anomaly': item.is_anomaly }"
         @click="$emit('select', item)"
       >
         <span class="dot" :style="{ background: riskColor(item.risk_level) }" />
+        <!-- v2: 异常标记 -->
+        <span v-if="item.is_anomaly" class="anomaly-dot" title="异常记录">⚠</span>
         <div class="row-card">
           <div class="row-top">
             <span class="risk-label" :class="'risk-' + item.risk_level">
@@ -135,12 +137,24 @@ function formatTime(ts: string): string {
   background: var(--color-accent-soft);
   border-left-color: var(--color-accent);
 }
+/* v2: 异常记录高亮 */
+.timeline-row.row-anomaly {
+  border-left-color: var(--color-danger);
+}
 
 .dot {
   width: 8px; height: 8px;
   border-radius: 50%;
   margin-top: 5px;
   flex-shrink: 0;
+}
+/* v2.1: 异常标记图标 */
+.anomaly-dot {
+  font-size: 12px;
+  line-height: 1;
+  margin-top: 3px;
+  flex-shrink: 0;
+  cursor: help;
 }
 
 .row-card { flex: 1; min-width: 0; }
