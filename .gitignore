@@ -14,3 +14,4 @@ skills-lock.json
 .agents/
 .continue/
 TODO/异常回溯待优化项.md
+scripts/package.sh
