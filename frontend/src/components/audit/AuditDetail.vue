@@ -38,7 +38,7 @@
         <div v-if="showTraceback" class="traceback-body">
           <!-- 因果链流程图 -->
           <div class="causal-flow">
-            <div class="flow-step" v-for="(step, key, idx) in causalSteps" :key="key">
+            <div class="flow-step" v-for="(step, idx) in causalSteps" :key="idx">
               <div class="flow-badge" :class="{ 'flow-anomaly': step.isAnomaly }">
                 {{ idx + 1 }}
               </div>

@@ -9,7 +9,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.models import Conversation, Message, AuditLog
-from datetime import datetime, timezone
+from datetime import datetime
 
 
 """
@@ -47,7 +47,7 @@ async def save_conversation(
             role=msg.get("role", "user"),
             content=msg.get("content", ""),
             tool_calls=msg.get("tool_calls"),
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(),
         ))
 
     await db.flush()

@@ -15,7 +15,9 @@ from sqlalchemy import select
 from app.db import get_db, async_session
 from app.llm.adapter import chat_stream
 from app.models import Conversation
-from datetime import datetime, timezone
+from app.services.causal_chain import fmt_summary, classify_anomaly, build_causal_chain
+from app.services.audit_writer import save_conversation, save_audit_logs_batch
+from datetime import datetime
 import json
 
 router=APIRouter()
@@ -34,7 +36,7 @@ async def chat_send(request: Request):
     async def sse_generator():
         collector=[]
         #阶段 1: 接收指令
-        stage_input_event={"raw_input":user_input,"timestamp":datetime.now(timezone.utc).isoformat(),"user":"anonymous"}
+        stage_input_event={"raw_input":user_input,"timestamp":datetime.now().isoformat(),"user":"anonymous"}
 
         async for event in chat_stream(user_input, history):
             if await request.is_disconnected():
@@ -141,14 +143,11 @@ async def chat_history_detail(
 
 在 SSE 生成器结束后调用, 使用独立数据库会话 (不阻塞 HTTP 响应)
 
-v2.1: 阶段 5 采集真实工具执行数据 (stdout/stderr/duration_ms),
-      每个 tool 独立一条 AuditLog (支持细粒度审计回溯),
-      增加 is_anomaly/anomaly_type 列 + 因果链
+v2: 阶段 5 采集真实工具执行数据 (stdout/stderr/duration_ms),
+    每个 tool 独立一条 AuditLog (支持细粒度审计回溯),
+    增加 is_anomaly/anomaly_type 列 + 因果链
 """
 async def _persist_chat(session_id,user_input,events,tools_called,stage_input_event):
-    from app.services.causal_chain import fmt_summary, classify_anomaly, build_causal_chain
-    from app.services.audit_writer import save_conversation, save_audit_logs_batch
-
     async with async_session() as db:
         #拆解事件, 构建消息列表
         messages=[]
@@ -328,6 +327,9 @@ async def _persist_chat(session_id,user_input,events,tools_called,stage_input_ev
                 })
 
             await save_audit_logs_batch(db, session_id, "anonymous", risk_level, audit_items)
+
+        #提交事务 — async_session() 不会 auto-commit
+        await db.commit()
 
 
 """

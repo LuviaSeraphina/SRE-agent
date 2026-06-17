@@ -11,7 +11,7 @@ from sqlalchemy import Column, String, DateTime, Text, ForeignKey, func
 from sqlalchemy.orm import Mapped, relationship
 from sqlalchemy.types import JSON
 from app.models.base import Base
-from app.models._utils import _new_uuid, _utcnow
+from app.models._utils import _new_uuid, _now
 
 
 class Conversation(Base):
@@ -47,7 +47,7 @@ class Message(Base):
     #格式: [{"id":"...", "tool_name":"...", "arguments":{...}, "status":"...", ...}]
     tool_calls=Column(JSON, nullable=True)
 
-    timestamp=Column(DateTime, nullable=False, default=_utcnow)
+    timestamp=Column(DateTime, nullable=False, default=_now)
     created_at=Column(DateTime, server_default=func.now())
 
     #关联

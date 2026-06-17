@@ -3,7 +3,7 @@
 
 避免在各模型文件中重复定义相同的辅助函数。
 """
-from datetime import datetime, timezone
+from datetime import datetime
 import uuid
 
 
@@ -15,7 +15,7 @@ def _new_uuid() -> str:
 
 
 """
-方法: _utcnow(), 返回带 UTC 时区的当前时间 (替代已弃用的 datetime.utcnow)
+方法: _now(), 返回本地当前时间
 """
-def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+def _now() -> datetime:
+    return datetime.now()

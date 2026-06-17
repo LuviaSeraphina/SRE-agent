@@ -15,7 +15,7 @@ v2: 新增 is_anomaly / anomaly_type 列, 替代 JSON 文本搜索, 支持索引
 from sqlalchemy import Column, String, DateTime, Boolean, func
 from sqlalchemy.types import JSON
 from app.models.base import Base
-from app.models._utils import _new_uuid, _utcnow
+from app.models._utils import _new_uuid, _now
 
 class AuditLog(Base):
     __tablename__="audit_logs"
@@ -33,7 +33,7 @@ class AuditLog(Base):
     #取值: none / security_blocked / tool_error / jailbreak_blocked / injection_blocked / dangerous_blocked
 
     #审计时间 (对话结束时间)
-    timestamp=Column(DateTime, nullable=False, default=_utcnow)
+    timestamp=Column(DateTime, nullable=False, default=_now)
 
     #---- 五阶段 (JSON) ----
 
