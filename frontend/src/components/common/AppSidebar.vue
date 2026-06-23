@@ -10,7 +10,7 @@
         </svg>
       </div>
       <transition name="fade">
-        <span v-if="!collapsed" class="brand-name">SRE-Agent</span>
+        <span v-if="!collapsed" class="brand-name">XikiyAIOps</span>
       </transition>
       <button
         class="collapse-btn"

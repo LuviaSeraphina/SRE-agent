@@ -74,7 +74,7 @@ def _is_safe_command(cmd):
 
     return True, ""
 
-_logger=logging.getLogger("sre_agent.mcp")
+_logger=logging.getLogger("xikiy_aiops.mcp")
 
 """
 方法: run_command(), 安全执行固定参数命令

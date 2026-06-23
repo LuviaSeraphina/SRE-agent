@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================
-# SRE-agent 一键部署 v1.0.0
+# XikiyAIOps 一键部署 v1.0.0
 # 用法: bash scripts/deploy.sh
 # ============================================================
 set -euo pipefail
@@ -23,7 +23,7 @@ ACTUAL_USER="${SUDO_USER:-$(whoami)}"
 
 echo -e "${BOLD}${GREEN}"
 echo "  ╔══════════════════════════════════════╗"
-echo "  ║   SRE-agent 一键部署 v1.0.0          ║"
+echo "  ║   XikiyAIOps 一键部署 v1.0.0          ║"
 echo "  ╚══════════════════════════════════════╝"
 echo -e "${NC}"
 
@@ -218,7 +218,7 @@ LLM_API_KEY=$_KEY
 MAX_RISK_LEVEL=restricted
 REQUIRE_CONFIRMATION=true
 AUDIT_ENABLED=true
-DATABASE_URL=sqlite+aiosqlite:///$BACKEND_DIR/data/sre_agent.db
+DATABASE_URL=sqlite+aiosqlite:///$BACKEND_DIR/data/xikiy_aiops.db
 EOF
   log_ok ".env 已生成"
 else

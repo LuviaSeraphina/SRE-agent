@@ -1,5 +1,5 @@
 {
-    "_comment": "SRE-agent 系统健康评分配置 — 修改权重和阈值后无需重启服务",
+    "_comment": "XikiyAIOps 系统健康评分配置 — 修改权重和阈值后无需重启服务",
     "version": "1.0",
     "weights": {
         "cpu": 0.25,

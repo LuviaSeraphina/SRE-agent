@@ -14,7 +14,7 @@ async def lifespan(app: FastAPI):
     yield
     #关闭时: 清理资源 (如有需要)
 
-app=FastAPI(title="SRE-agent", version="1.0.0", lifespan=lifespan)
+app=FastAPI(title="XikiyAIOps", version="1.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -53,7 +53,7 @@ async def health():
     except Exception as e:
         llm_status="error"
         llm_detail=str(e)[:100]
-    return {"status":"ok","service":"sre-agent","llm":llm_status,"llm_detail":llm_detail}
+    return {"status":"ok","service":"xikiy-aiops","llm":llm_status,"llm_detail":llm_detail}
 
 #路由注册 (必须在静态文件挂载之前, 否则 /api 路由被静态文件拦截)
 from app.api import chat

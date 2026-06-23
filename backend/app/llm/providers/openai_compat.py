@@ -114,7 +114,7 @@ class OpenAICompatProvider(BaseLLMProvider):
                             detail = error_data.get("error", {}).get("message", "")
                         except Exception:
                             detail = ""
-                        logger = __import__("logging").getLogger("sre_agent.llm")
+                        logger = __import__("logging").getLogger("xikiy_aiops.llm")
                         logger.error(
                             "LLM API HTTP %s: %s", resp.status_code, detail or error_body[:200]
                         )

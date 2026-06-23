@@ -7,7 +7,7 @@ import platform
 import os
 import logging
 
-_logger=logging.getLogger("sre_agent.platform")
+_logger=logging.getLogger("xikiy_aiops.platform")
 
 #方法: 获取系统内核信息
 def _get_platform_info():

@@ -49,7 +49,7 @@ def build_system_prompt():
         return _cached_prompt
     platform=_get_platform_cached()
     tools_json=json.dumps(registry.list_all(), ensure_ascii=False, indent=2)
-    _cached_prompt=f"""你是麒麟操作系统上的智能运维 Agent (SRE-Agent)。
+    _cached_prompt=f"""你是麒麟操作系统上的智能运维 Agent (XikiyAIOps)。
 
 运行环境:
 - 操作系统: {platform.get("os", "未知")}

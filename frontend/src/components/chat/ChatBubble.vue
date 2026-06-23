@@ -60,7 +60,7 @@ const isStreaming = computed(() => props.streaming && props.message.role === 'as
 const roleLabel = computed(() => {
   switch (props.message.role) {
     case 'user':      return 'You'
-    case 'assistant': return 'SRE-Agent'
+    case 'assistant': return 'XikiyAIOps'
     case 'system':    return 'System'
     case 'tool':      return 'Tool'
     default:          return ''

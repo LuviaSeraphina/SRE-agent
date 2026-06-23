@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================
-# SRE-agent 一键启动脚本 v1.0.0
+# XikiyAIOps 一键启动脚本 v1.0.0
 #
 # 同时启动后端 (FastAPI) 和前端 (Vite dev server)
 # 用法: bash scripts/start.sh
@@ -67,7 +67,7 @@ trap 'cleanup manual' INT TERM
 
 echo -e "${BOLD}${GREEN}"
 echo "  ╔═══════════════════════════════════════════════════╗"
-echo "  ║     SRE-agent 一键启动                             ║"
+echo "  ║     XikiyAIOps 一键启动                             ║"
 echo "  ╚═══════════════════════════════════════════════════╝"
 echo -e "${NC}"
 
@@ -199,7 +199,7 @@ fi
 # ============================================================
 echo ""
 echo -e "  ${BOLD}${GREEN}════════════════════════════════════════════════════${NC}"
-echo -e "  ${BOLD}${GREEN}  ✅ SRE-agent 已就绪${NC}"
+echo -e "  ${BOLD}${GREEN}  ✅ XikiyAIOps 已就绪${NC}"
 echo -e "  ${GREEN}════════════════════════════════════════════════════${NC}"
 echo ""
 if [ "$FRONTEND_MODE" = "static" ]; then

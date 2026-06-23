@@ -3,7 +3,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 import logging
 
-logger = logging.getLogger("sre_agent.llm")
+logger = logging.getLogger("xikiy_aiops.llm")
 
 # 显式指定 .env 路径，避免依赖 CWD
 _env_path = Path(__file__).resolve().parent.parent.parent / ".env"

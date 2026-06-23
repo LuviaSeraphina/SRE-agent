@@ -1,4 +1,4 @@
-# SRE-agent 完整依赖 (直接 + 全部传递 = 45 个包)
+# XikiyAIOps 完整依赖 (直接 + 全部传递 = 45 个包)
 # 生成: pipdeptree 递归解析 → 去 Windows 专有 → 去条件依赖
 # pip install -r requirements.txt 可完整离线安装
 

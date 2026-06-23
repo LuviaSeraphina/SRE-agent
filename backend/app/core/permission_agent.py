@@ -10,8 +10,8 @@
 6. 保护名单: 关键进程/路径即使 root 也不可操作
 
 v2.0 新增:
-- 专用 sre-agent 系统用户 (sreagent)
-- sudo 降权执行机制 (sudo -u sreagent)
+- 专用 xikiy-aiops 系统用户 (xikiyops)
+- sudo 降权执行机制 (sudo -u xikiyops)
 - 沙箱执行上下文 (sandbox mode)
 - 权限审计跟踪
 """
@@ -30,9 +30,9 @@ _RISK_PERMISSION_MAP={
 
 
 # 专用低权限用户配置
-# SRE-agent 专用系统用户 (建议部署时创建)
-# sudo useradd -r -s /bin/false -d /nonexistent -M sreagent
-_SRE_AGENT_USER="sreagent"
+# XikiyAIOps 专用系统用户 (建议部署时创建)
+# sudo useradd -r -s /bin/false -d /nonexistent -M xikiyops
+_XIKIY_OPS_USER="xikiyops"
 
 # 沙箱模式下使用的降权用户
 _SANDBOX_USER="nobody"  # fallback: 系统自带的低权限用户
@@ -80,10 +80,10 @@ def _current_user():
         return f"uid:{uid}"
 
 
-def _is_sre_agent_user_available():
-    """检查专用 sreagent 用户是否已创建"""
+def _is_xikiy_ops_user_available():
+    """检查专用 xikiyops 用户是否已创建"""
     try:
-        pwd.getpwnam(_SRE_AGENT_USER)
+        pwd.getpwnam(_XIKIY_OPS_USER)
         return True
     except KeyError:
         return False
@@ -91,8 +91,8 @@ def _is_sre_agent_user_available():
 
 def _get_sandbox_user():
     """获取可用的沙箱用户"""
-    if _is_sre_agent_user_available():
-        return _SRE_AGENT_USER
+    if _is_xikiy_ops_user_available():
+        return _XIKIY_OPS_USER
     try:
         pwd.getpwnam(_SANDBOX_USER)
         return _SANDBOX_USER
@@ -141,11 +141,11 @@ def get_available_privilege_levels():
     if _user_in_group(current,"sudo") or _user_in_group(current,"wheel"):
         levels.append({"user":current,"level":"ops_advanced","available":True})
 
-    if _is_sre_agent_user_available():
-        levels.append({"user":_SRE_AGENT_USER,"level":"ops_basic","available":True})
+    if _is_xikiy_ops_user_available():
+        levels.append({"user":_XIKIY_OPS_USER,"level":"ops_basic","available":True})
     else:
-        levels.append({"user":_SRE_AGENT_USER,"level":"ops_basic","available":False,
-                    "setup_cmd":f"sudo useradd -r -s /bin/false -d /nonexistent -M {_SRE_AGENT_USER}"})
+        levels.append({"user":_XIKIY_OPS_USER,"level":"ops_basic","available":False,
+                    "setup_cmd":f"sudo useradd -r -s /bin/false -d /nonexistent -M {_XIKIY_OPS_USER}"})
 
     try:
         pwd.getpwnam(_SANDBOX_USER)
@@ -241,7 +241,7 @@ def get_permission_level():
     if _user_in_group(user,"sudo") or _user_in_group(user,"wheel"):
         return "ops_advanced"
 
-    if _is_sre_agent_user_available() and user==_SRE_AGENT_USER:
+    if _is_xikiy_ops_user_available() and user==_XIKIY_OPS_USER:
         return "ops_basic"
 
     return "ops_basic"
@@ -265,7 +265,7 @@ def permission_summary():
         "can_dangerous":level=="ops_admin",
         "sandbox_user":sandbox,
         "sandbox_available":sandbox is not None,
-        "sre_agent_user_available":_is_sre_agent_user_available(),
+        "xikiy_ops_user_available":_is_xikiy_ops_user_available(),
         "protected_processes_count":len(_PROTECTED_PROCESSES),
         "protected_paths_count":len(_PROTECTED_PATHS),
         "privilege_downgrade_supported":shutil.which("sudo") is not None,
@@ -273,29 +273,29 @@ def permission_summary():
 
 
 """
-方法: setup_instructions(), 返回创建 SRE-agent 专用低权限用户的命令指引
+方法: setup_instructions(), 返回创建 XikiyAIOps 专用低权限用户的命令指引
 应在首次部署时引导运维人员执行
 """
 def setup_instructions():
     return {
-        "title": "SRE-agent 专用低权限用户创建指引",
+        "title": "XikiyAIOps 专用低权限用户创建指引",
         "description": "为遵循最小权限原则, 建议创建专用系统用户运行高风险操作",
         "steps": [
             {
                 "step": 1,
-                "command":f"sudo useradd -r -s /bin/false -d /nonexistent -M {_SRE_AGENT_USER}",
-                "description":f"创建系统用户 {_SRE_AGENT_USER} (无登录权限, 无家目录)",
+                "command":f"sudo useradd -r -s /bin/false -d /nonexistent -M {_XIKIY_OPS_USER}",
+                "description":f"创建系统用户 {_XIKIY_OPS_USER} (无登录权限, 无家目录)",
             },
             {
                 "step": 2,
-                "command":f"sudo usermod -aG {_SRE_AGENT_USER} {_current_user()}",
-                "description":f"可选: 将当前用户加入 {_SRE_AGENT_USER} 组以便管理",
+                "command":f"sudo usermod -aG {_XIKIY_OPS_USER} {_current_user()}",
+                "description":f"可选: 将当前用户加入 {_XIKIY_OPS_USER} 组以便管理",
             },
             {
                 "step": 3,
-                "command":"sudo visudo -f /etc/sudoers.d/sre-agent",
-                "description":f"配置 sudo 策略: {_current_user()} ALL=({_SRE_AGENT_USER}) NOPASSWD: /usr/bin/systemctl status, /usr/bin/journalctl",
+                "command":"sudo visudo -f /etc/sudoers.d/xikiy-aiops",
+                "description":f"配置 sudo 策略: {_current_user()} ALL=({_XIKIY_OPS_USER}) NOPASSWD: /usr/bin/systemctl status, /usr/bin/journalctl",
             },
         ],
-        "verification":f"id {_SRE_AGENT_USER}",
+        "verification":f"id {_XIKIY_OPS_USER}",
     }

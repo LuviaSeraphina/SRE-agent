@@ -22,7 +22,7 @@ from datetime import datetime
 import json
 import logging
 
-_logger=logging.getLogger("sre_agent.api")
+_logger=logging.getLogger("xikiy_aiops.api")
 
 router=APIRouter()
 

@@ -29,7 +29,7 @@ from app.models import Base
 _env_path=Path(__file__).resolve().parent.parent / ".env"
 load_dotenv(_env_path)
 
-DATABASE_URL=os.getenv("DATABASE_URL", "sqlite+aiosqlite:///sre_agent.db")
+DATABASE_URL=os.getenv("DATABASE_URL", "sqlite+aiosqlite:///xikiy_aiops.db")
 
 #自动纠正: sqlite:/// → sqlite+aiosqlite:/// (异步引擎必需)
 if DATABASE_URL.startswith("sqlite:///"):
