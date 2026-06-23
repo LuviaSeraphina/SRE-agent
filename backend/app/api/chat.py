@@ -20,6 +20,9 @@ from app.services.causal_chain import fmt_summary, classify_anomaly, build_causa
 from app.services.audit_writer import save_conversation, save_audit_logs_batch
 from datetime import datetime
 import json
+import logging
+
+_logger=logging.getLogger("sre_agent.api")
 
 router=APIRouter()
 
@@ -65,7 +68,7 @@ async def chat_send(request: Request):
             try:
                 await _persist_chat(session_id, user_input, collected_events, collector, stage_input_event)
             except Exception as e:
-                print(f"[chat] 持久化对话失败: {e}")
+                _logger.error(f"持久化对话失败 session={session_id}: {e}", exc_info=True)
                 yield f"event: error\ndata: {json.dumps({'message':'持久化对话失败'},ensure_ascii=False)}\n\n"
                 return
 
