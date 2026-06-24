@@ -48,6 +48,14 @@ _HAS_RPM=false; _HAS_WHEELS=false
 [ -f "$OFFLINE_DIR/rpms.tar.gz" ] && _HAS_RPM=true
 [ -f "$OFFLINE_DIR/wheels.tar.gz" ] && _HAS_WHEELS=true
 
+#离线包仅在 LoongArch 上可用 (RPM 为 ky11.loongarch64, wheel 含原生 .so)
+if [ "$IS_LOONGARCH" = false ]; then
+  [ "$_HAS_RPM" = true ] && log_warn "跳过离线 RPM (当前架构 $ARCH ≠ loongarch64)"
+  [ "$_HAS_WHEELS" = true ] && log_warn "跳过离线 Wheel (当前架构 $ARCH ≠ loongarch64)"
+  _HAS_RPM=false
+  _HAS_WHEELS=false
+fi
+
 echo "  OS: $OS_ID | 架构: $ARCH | 包管理: $PKG_MGR"
 echo "  离线 RPM: $_HAS_RPM | 离线 Wheel: $_HAS_WHEELS"
 
@@ -64,8 +72,8 @@ install_pkg() {
 # ============================================================
 echo -e "\n${BOLD}▶ Step 2/5: 系统依赖${NC}"
 
-#离线 RPM
-if [ "$_HAS_RPM" = true ]; then
+#离线 RPM (仅 LoongArch)
+if [ "$IS_LOONGARCH" = true ] && [ "$_HAS_RPM" = true ]; then
   _TMP="$(mktemp -d)"
   tar xzf "$OFFLINE_DIR/rpms.tar.gz" -C "$_TMP" 2>/dev/null || true
   _CNT=$(find "$_TMP" -name "*.rpm" 2>/dev/null | wc -l)
@@ -87,12 +95,24 @@ if [ ! -f "$FRONTEND_DIR/dist/index.html" ]; then
   command -v node &>/dev/null && log_ok "Node: $(node --version)" || log_warn "Node 未安装, 前端构建将跳过"
 fi
 
-#LoongArch: 编译工具链 (pip 在线回退时需要)
+#编译工具链 (pip 在线安装需编译原生扩展: greenlet/httptools/watchfiles 等)
 if [ "$IS_LOONGARCH" = true ]; then
   for pkg in gcc gcc-c++ make git cmake python3-devel; do
     install_pkg "$pkg" 2>/dev/null || true
   done
-  log_ok "编译工具链就绪"
+  log_ok "编译工具链就绪 (LoongArch)"
+else
+  #x86_64: 区分 dnf/apt 包名
+  if [ "$PKG_MGR" = "dnf" ]; then
+    for pkg in gcc gcc-c++ make python3-devel; do
+      install_pkg "$pkg" 2>/dev/null || true
+    done
+  else
+    for pkg in gcc g++ make python3-dev; do
+      install_pkg "$pkg" 2>/dev/null || true
+    done
+  fi
+  log_ok "编译工具链就绪 (x86_64)"
 fi
 
 # ============================================================
@@ -120,7 +140,7 @@ VENV_PIP="$VENV_DIR/bin/pip"
 VENV_PYTHON="$VENV_DIR/bin/python"
 "$VENV_PIP" install --upgrade pip -q 2>/dev/null || true
 
-#解压离线 wheel
+#解压离线 wheel (仅 LoongArch — x86_64 已在 Step 1 强制 _HAS_WHEELS=false)
 if [ "$_HAS_WHEELS" = true ]; then
   log_info "解压离线 wheel..."
   rm -rf "$VENDOR_DIR" && mkdir -p "$VENDOR_DIR"
