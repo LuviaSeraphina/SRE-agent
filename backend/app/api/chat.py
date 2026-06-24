@@ -316,10 +316,9 @@ async def _persist_chat(session_id,user_input,events,tools_called,stage_input_ev
                 stage_input_event, shared_perception, shared_reasoning,
                 shared_validation, stage_exec,
             )
-            stages=[stage_input_event, shared_perception, shared_reasoning, shared_validation, stage_exec]
-            await save_audit_logs_batch(db, session_id, "anonymous", risk_level, [{
-                "stages":stages, "is_anomaly":is_anomaly, "anomaly_type":anomaly_type,
-            }])
+            await save_audit_logs_batch(db, session_id, "anonymous", risk_level, [
+                _build_audit_item(stage_input_event, shared_perception, shared_reasoning, shared_validation, stage_exec, is_anomaly, anomaly_type),
+            ])
         else:
             #v2.1: 每个 tool 独立一条 AuditLog
             audit_items=[]
@@ -353,12 +352,9 @@ async def _persist_chat(session_id,user_input,events,tools_called,stage_input_ev
                         stage_input_event, tool_perception, shared_reasoning,
                         tool_validation, tool_exec,
                     )
-                    stages=[stage_input_event, tool_perception, shared_reasoning, tool_validation, tool_exec]
-                    audit_items.append({
-                        "stages":stages,
-                        "is_anomaly":False,
-                        "anomaly_type":"none",
-                    })
+                    audit_items.append(
+                        _build_audit_item(stage_input_event, tool_perception, shared_reasoning, tool_validation, tool_exec, False, "none"),
+                    )
                     continue
 
                 #阶段 4: 安全校验 (提取该 tool 相关的 security_check)
@@ -388,17 +384,23 @@ async def _persist_chat(session_id,user_input,events,tools_called,stage_input_ev
                     tool_validation, tool_exec,
                 )
 
-                stages=[stage_input_event, tool_perception, shared_reasoning, tool_validation, tool_exec]
-                audit_items.append({
-                    "stages":stages,
-                    "is_anomaly":is_anomaly,
-                    "anomaly_type":anomaly_type,
-                })
+                audit_items.append(
+                    _build_audit_item(stage_input_event, tool_perception, shared_reasoning, tool_validation, tool_exec, is_anomaly, anomaly_type),
+                )
 
             await save_audit_logs_batch(db, session_id, "anonymous", risk_level, audit_items)
 
         #提交事务 — async_session() 不会 auto-commit
         await db.commit()
+
+
+
+"""
+方法: _build_audit_item(), 构建单条审计记录的 stages + 标记
+"""
+def _build_audit_item(s1, s2, s3, s4, s5, is_anomaly, anomaly_type):
+    s5["causal_chain"]=build_causal_chain(s1, s2, s3, s4, s5)
+    return {"stages":[s1, s2, s3, s4, s5], "is_anomaly":is_anomaly, "anomaly_type":anomaly_type}
 
 
 """

@@ -10,6 +10,7 @@ from datetime import datetime
 from app.mcp_plugins._common import(
     run_command as _run_command,
     _cmd_ok,
+    _sdk_call,
     make_response as _make_response,
     error_response as _error_response,
     _kysdk_import,
@@ -145,16 +146,6 @@ def system_info():
     except Exception as e:
         return _error_response("system_info", e)
 
-
-#方法: 安全调用 SDK 对象方法, 返回 None 表示不可用
-def _sdk_call(obj, method_name, *args):
-    try:
-        method=getattr(obj, method_name, None)
-        if method is None:
-            return None
-        return method(*args)
-    except Exception:
-        return None
 
 
 """

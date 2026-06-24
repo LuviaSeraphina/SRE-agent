@@ -39,7 +39,6 @@ def _get_platform_cached():
         _cached_platform=get_platform_info()
     return _cached_platform
 
-
 """
 方法: build_system_prompt(), 输出自定义 Agent Prompt
 """
@@ -78,7 +77,6 @@ def build_system_prompt():
 - 发现异常时标注风险等级 (🟢正常 / 🟡警告 / 🔴危险)"""
     return _cached_prompt
 
-
 """
 方法: check_user_input(), 安全检查前置 — 不进 LLM 的拦截绝不浪费算力
 
@@ -109,7 +107,6 @@ def check_user_input(user_input):
 
     return True, "OK", "safe"
 
-
 """
 方法: execute_tool(), 执行单个 MCP Tool — 参数注入检测 + 权限预检 (委托 registry.call)
 """
@@ -122,7 +119,6 @@ def execute_tool(tool_name, arguments):
             "summary": {"error": "参数注入拦截: {}".format(injection_hits[0])},
         }
     return registry.call(tool_name, **arguments)
-
 
 """
 方法: _process_tool_call(), 对单个 LLM tool call 构建 SSE 事件 + 执行, 返回 (tool_msg, events)
@@ -174,27 +170,26 @@ def _process_tool_call(tc):
 
     return tool_msg, events
 
+def _safe_div(a, b):
+    """安全除法, 除数为 0 时返回 0"""
+    return a / b if b else 0
 
-"""
-方法: _extract_metrics(), 从工具调用结果中提取健康评分的五项指标
-"""
+_METRIC_EXTRACTORS={
+    "system_load": lambda data: {"load_ratio": _safe_div(data.get("load_1min", 0), max(data.get("cpu_cores", 1), 1))},
+    "memory_info": lambda data: {"memory_percent": data.get("usage_percent", 0)},
+    "disk_inspect_handler": lambda data: {"disk_percent": data.get("usage_percent", 0)},
+    "swap_info": lambda data: {"swap_percent": data.get("swap_percent", 0)},
+}
+
 def _extract_metrics(tool_results):
     metrics={}
     for result in tool_results:
         name=result.get("tool", "")
         data=result.get("data", {})
-        if name=="system_load":
-            #load_ratio = load1 / cpu_cores
-            load1=data.get("load_1min", 0)
-            cores=data.get("cpu_cores", 1) or 1
-            metrics["load_ratio"]=load1 / cores if cores else 0
-        elif name=="memory_info":
-            metrics["memory_percent"]=data.get("usage_percent", 0)
-        elif name=="disk_inspect_handler":
-            metrics["disk_percent"]=data.get("usage_percent", 0)
-        elif name=="swap_info":
-            metrics["swap_percent"]=data.get("swap_percent", 0)
-        # cpu_percent 从 summary 推断 (暂用 load_ratio * 100 近似)
+        extractor=_METRIC_EXTRACTORS.get(name)
+        if extractor:
+            metrics.update(extractor(data))
+    # cpu_percent 从 load_ratio 近似
     if "cpu_percent" not in metrics:
         metrics["cpu_percent"]=metrics.get("load_ratio", 0) * 100
     return metrics

@@ -205,3 +205,18 @@ def _kysdk_import(name):
         return getattr(mod, name, None)
     except (ImportError, AttributeError):
         return None
+
+"""
+方法: _sdk_call(), 安全调用 KYSDK 对象方法, 失败返回 None
+
+与 platform_detect._safe_call 合并, 统一入口避免重复实现。
+用法: _sdk_call(hw, "get_cpu_arch") or "unknown"
+"""
+def _sdk_call(obj, method_name, *args):
+    try:
+        method=getattr(obj, method_name, None)
+        if method is None:
+            return None
+        return method(*args)
+    except Exception:
+        return None
