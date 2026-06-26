@@ -10,6 +10,7 @@ MCP 插件注册中心 — 统一管理所有 Tool 的注册、发现与调用
 from enum import Enum
 import importlib
 from app.core.permission_agent import check_permission
+from app.mcp_plugins._common import sanitize_response
 
 
 class RiskLevel(str, Enum):
@@ -84,7 +85,8 @@ class MCPPluginRegistry:
         if not allowed:
             return {"tool": name, "risk_level": "blocked", "data": {}, "summary": {"error": reason}}
 
-        return tool.execute(**kwargs)
+        result = tool.execute(**kwargs)
+        return sanitize_response(name, result)
 
     @property
     def count(self):

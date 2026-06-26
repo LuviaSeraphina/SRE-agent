@@ -218,15 +218,16 @@ def _detect_homoglyph_injection(user_input):
 
     normalized_text = ''.join(normalized)
 
-    # 检测标准化后是否出现危险关键词
-    for keyword in _HOMOGLYPH_DANGER_KEYWORDS:
-        if keyword in normalized_text.lower():
-            hits.append(
+    # 检测标准化后是否出现危险关键词 (仅在确实使用了同形字时才报告)
+    if used_homoglyphs:
+        for keyword in _HOMOGLYPH_DANGER_KEYWORDS:
+            if re.search(r"\b" + re.escape(keyword) + r"\b", normalized_text, re.IGNORECASE):
+                hits.append(
                 "HOMOGLYPH: 同形字伪装 '{}' — 使用字符: {}".format(
                     keyword,
                     ', '.join(sorted(used_homoglyphs)[:3])
                 ))
-            break  # 一个命中即足够
+                break  # 一个命中即足够
 
     return hits
 

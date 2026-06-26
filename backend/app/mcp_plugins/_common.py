@@ -31,6 +31,200 @@ def error_response(tool, error):
         "summary": {"error": str(error)},
     }
 
+
+"""
+方法: sanitize_response(), 响应脱敏 — 自动移除工具返回数据中的敏感字段
+
+设计原则:
+- summary 字段完全保留 (已经是摘要, 无线索)
+- data 字段按白名单过滤: 未在 keep 列表中的字段被删除
+- 不在脱敏规则中的 tool 原样返回 (不误删)
+"""
+# 脱敏规则: tool_name → data 中允许保留的字段 (白名单)
+_SANITIZE_RULES = {
+    # ── 用户/权限类 ──
+    "user_list": {
+        "keep_data": ["users"],  # users 列表中的每项过滤
+        "keep_user_fields": ["name", "is_system"],  # 删 uid/gid/home/shell
+        "keep_groups": True, "keep_group_fields": ["name", "gid"],  # groups 保留 name+gid, 删 members
+    },
+    "security_user_audit": {
+        "keep_data": ["issues_count", "issues"],
+        "keep_issue_fields": ["type", "severity"],  # 删 user/detail
+        "redact_count": True,  # issues 仅保留统计, 不列具体项
+    },
+    "security_user_privilege": {
+        "keep_data": ["username", "sudo_access", "home_permission", "source"],
+        "redact_username": True,  # username 替换为 "***"
+    },
+    # ── 会话/认证类 ──
+    "security_auth_failures": {
+        "keep_data": ["total_failures", "by_type_summary", "sources_count"],
+        "keep_detail_fields": [],  # 不保留 failed_ips / failed_users 明细
+    },
+    "security_active_sessions": {
+        "keep_data": ["session_count", "ssh_connection_count"],
+        # 不保留 sessions[].user/from_ip/pid 和 ssh_connections[].remote
+    },
+    # ── 进程类 ──
+    "process_detail": {
+        "keep_process_fields": ["pid", "name", "status", "cpu_percent", "memory_percent", "num_threads", "create_time"],
+        # 删 exe / cwd / username / num_fds / memory_info_rss_mb
+    },
+    "process_detail_handler": {
+        "keep_process_fields": ["pid", "name", "status", "cpu_percent", "memory_percent", "num_threads", "create_time"],
+    },
+    # ── 网络类 ──
+    "network_listening_ports": {
+        "keep_data": ["port_count", "ports"],
+        "keep_port_fields": ["port", "proto"],  # 删 bind/process/pid
+    },
+    "network_interface_stats": {
+        "keep_data": ["interface_count", "interfaces"],
+        "keep_iface_fields": ["name", "state", "rx_bytes", "tx_bytes", "rx_errors", "tx_errors", "rx_dropped", "tx_dropped"],
+        # 删 mac / ipv4 / ipv6 / driver
+    },
+    "network_dns_check": {
+        "keep_data": ["domain", "dns_server", "count", "source"],
+        # 删 resolved_ips (具体 IP 列表)
+    },
+    # ── 文件/磁盘类 ──
+    "disk_mount_audit": {
+        "keep_data": ["mounts", "mount_count", "suspicious"],
+        "keep_mount_fields": ["mountpoint", "fstype", "security_flags"],
+        # 删 device / opts
+    },
+    "disk_large_files": {
+        "keep_data": ["file_count", "scan_path"],
+        # 删 files[].path (完整路径)
+    },
+    "security_suid_scan": {
+        "keep_data": ["total_files", "suspicious_count", "suspicious_files"],
+        "keep_suid_fields": ["permissions", "suspicious"],
+        # 删 files[].path / files[].owner
+    },
+    # ── 定时任务/启动类 ──
+    "security_crontab_audit": {
+        "keep_data": ["total_entries", "suspicious_count", "suspicious_entries"],
+        "keep_cron_fields": ["user", "suspicious", "matched_keywords"],
+        # 删 entries[].entry (完整命令)
+    },
+    "system_boot_params": {
+        "keep_data": ["security_checks", "missing_security_params", "raw_preview"],
+        # 删 raw (完整 cmdline)
+    },
+    # ── 日志类 ──
+    "system_journal_query": {
+        "keep_data": ["total", "filter", "entries"],
+        "keep_journal_fields": ["timestamp", "service", "priority"],
+        # 删 entries[].hostname / message / pid
+    },
+    "system_journal_tail": {
+        "keep_data": ["priority", "lines_requested", "entries"],
+        "keep_journal_fields": ["timestamp", "service", "priority"],
+    },
+    # ── 容器类 ──
+    "container_inspect": {
+        "keep_data": ["id", "name", "image", "env_count", "privileged"],
+        # 删 capabilities / mounts
+    },
+    "container_list": {
+        "keep_data": ["containers", "count", "runtime"],
+        "keep_container_fields": ["id", "name", "image", "status"],
+        # 删 ports
+    },
+    # ── 系统信息 ──
+    "system_info": {
+        "keep_data": ["os", "distro", "kernel", "arch", "boot_time", "cpu_cores_logical", "cpu_cores_physical", "pkg_manager", "firewall", "is_kylin", "display_name"],
+        # 删 hostname
+    },
+}
+
+def sanitize_response(tool_name, response):
+    """根据工具名对响应数据脱敏, 返回清理后的 response dict"""
+    if tool_name is None:
+        return response
+    rules = _SANITIZE_RULES.get(tool_name)
+    if rules is None:
+        return response  # 无规则, 原样返回
+
+    data = response.get("data", {})
+    if not isinstance(data, dict):
+        return response
+
+    cleaned = {}
+
+    # 1. 白名单过滤 data 顶层字段
+    keep_data = rules.get("keep_data", [])
+    if keep_data:
+        for key in keep_data:
+            if key in data:
+                cleaned[key] = data[key]
+    else:
+        cleaned = dict(data)  # 无顶层白名单, 保留全部
+
+    # 2. 对 users 列表中的每项过滤
+    if "keep_user_fields" in rules and "users" in cleaned and isinstance(cleaned.get("users"), list):
+        keepf = set(rules["keep_user_fields"])
+        cleaned["users"] = [{k: v for k, v in u.items() if k in keepf} for u in cleaned["users"]]
+
+    # 3. 对 groups 列表过滤
+    if "keep_group_fields" in rules and "groups" in cleaned and isinstance(cleaned.get("groups"), list):
+        keepf = set(rules["keep_group_fields"])
+        cleaned["groups"] = [{k: v for k, v in g.items() if k in keepf} for g in cleaned["groups"]]
+
+    # 4. issues 仅保留计数
+    if rules.get("redact_count") and "issues" in cleaned is not None:
+        cleaned["issues"] = f"[{len(cleaned['issues'])} 项, 已脱敏]"
+
+    # 5. username 脱敏
+    if rules.get("redact_username"):
+        if "username" in cleaned:
+            cleaned["username"] = "***"
+
+    # 6. process 对象过滤
+    if "keep_process_fields" in rules and "process" in cleaned and isinstance(cleaned.get("process"), dict):
+        keepf = set(rules["keep_process_fields"])
+        cleaned["process"] = {k: v for k, v in cleaned["process"].items() if k in keepf}
+
+    # 7. ports 列表中每项过滤
+    if "keep_port_fields" in rules and "ports" in cleaned and isinstance(cleaned.get("ports"), list):
+        keepf = set(rules["keep_port_fields"])
+        cleaned["ports"] = [{k: v for k, v in p.items() if k in keepf} for p in cleaned["ports"]]
+
+    # 8. interfaces 列表过滤
+    if "keep_iface_fields" in rules and "interfaces" in cleaned and isinstance(cleaned.get("interfaces"), list):
+        keepf = set(rules["keep_iface_fields"])
+        cleaned["interfaces"] = [{k: v for k, v in iface.items() if k in keepf} for iface in cleaned["interfaces"]]
+
+    # 9. mounts 列表过滤
+    if "keep_mount_fields" in rules and "mounts" in cleaned and isinstance(cleaned.get("mounts"), list):
+        keepf = set(rules["keep_mount_fields"])
+        cleaned["mounts"] = [{k: v for k, v in m.items() if k in keepf} for m in cleaned["mounts"]]
+
+    # 10. suspicious_files / files 列表过滤
+    if "keep_suid_fields" in rules and "suspicious_files" in cleaned and isinstance(cleaned.get("suspicious_files"), list):
+        keepf = set(rules["keep_suid_fields"])
+        cleaned["suspicious_files"] = [{k: v for k, v in f.items() if k in keepf} for f in cleaned["suspicious_files"]]
+
+    # 11. crontab entries 过滤
+    if "keep_cron_fields" in rules and "suspicious_entries" in cleaned and isinstance(cleaned.get("suspicious_entries"), list):
+        keepf = set(rules["keep_cron_fields"])
+        cleaned["suspicious_entries"] = [{k: v for k, v in e.items() if k in keepf} for e in cleaned["suspicious_entries"]]
+
+    # 12. journal entries 过滤
+    if "keep_journal_fields" in rules and "entries" in cleaned and isinstance(cleaned.get("entries"), list):
+        keepf = set(rules["keep_journal_fields"])
+        cleaned["entries"] = [{k: v for k, v in e.items() if k in keepf} for e in cleaned["entries"]]
+
+    # 13. containers 列表过滤
+    if "keep_container_fields" in rules and "containers" in cleaned and isinstance(cleaned.get("containers"), list):
+        keepf = set(rules["keep_container_fields"])
+        cleaned["containers"] = [{k: v for k, v in c.items() if k in keepf} for c in cleaned["containers"]]
+
+    response["data"] = cleaned
+    return response
+
 # 允许执行的命令白名单 (只有这些命令可通过 run_command 执行)
 _ALLOWED_COMMANDS={
     "ss","ip","who","find","lsmod","systemctl",
