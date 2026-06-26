@@ -46,7 +46,7 @@ command -v apt &>/dev/null && PKG_MGR="apt"
 
 _HAS_RPM=false; _HAS_WHEELS=false
 [ -f "$OFFLINE_DIR/rpms.tar.gz" ] && _HAS_RPM=true
-[ -f "$OFFLINE_DIR/wheels.tar.gz" ] && _HAS_WHEELS=true
+[ -f "$OFFLINE_DIR/wheels-loongarch64.tar.gz" ] && _HAS_WHEELS=true
 
 #离线包仅在 LoongArch 上可用 (RPM 为 ky11.loongarch64, wheel 含原生 .so)
 if [ "$IS_LOONGARCH" = false ]; then
@@ -145,7 +145,7 @@ if [ "$_HAS_WHEELS" = true ]; then
   log_info "解压离线 wheel..."
   rm -rf "$VENDOR_DIR" && mkdir -p "$VENDOR_DIR"
   _TMP="$(mktemp -d)"
-  tar xzf "$OFFLINE_DIR/wheels.tar.gz" -C "$_TMP" 2>/dev/null || true
+  tar xzf "$OFFLINE_DIR/wheels-loongarch64.tar.gz" -C "$_TMP" 2>/dev/null || true
   find "$_TMP" -name '*.whl' -exec mv {} "$VENDOR_DIR/" \; 2>/dev/null || true
   rm -rf "$_TMP"
   _CNT=$(find "$VENDOR_DIR" -maxdepth 1 -name '*.whl' 2>/dev/null | wc -l)
