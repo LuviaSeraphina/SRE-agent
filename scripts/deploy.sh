@@ -247,8 +247,8 @@ else
   _MODEL=$(grep -oP 'LLM_MODEL=\K.*' .env 2>/dev/null || echo "?")
 fi
 
-#数据库
-mkdir -p data
+#数据库 + RAG 知识库目录
+mkdir -p data/rag_db data/sre_kb
 "$VENV_PYTHON" -c "
 from app.db import init_db
 import asyncio
