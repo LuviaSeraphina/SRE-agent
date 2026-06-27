@@ -74,3 +74,8 @@ pluggy>=1.6
 iniconfig>=2.3
 packaging>=26
 pygments>=2.20
+# ── RAG 知识库 (向量检索 + 嵌入模型) ──
+# 以下为可选依赖 (未安装时自动回落 sqlite3+numpy / DeepSeek API):
+# chromadb>=0.5            # 向量存储 (可选, x86_64推荐)
+# sentence-transformers>=3.0  # 嵌入模型 (可选, x86_64推荐)
+# LoongArch: 无需安装, 原生 sqlite3 + DeepSeek Embedding API 自动适配

@@ -444,6 +444,24 @@ def _auto_register_all(reg):
         risk_level=RiskLevel.READ_ONLY,
     ))
 
+    #---- RAG 知识库 (v0.4) ----
+    reg.register(MCPTool(
+        name="rag_search",
+        description="RAG 运维知识库检索 — 从赛题文档/MCP Tool说明/SRE最佳实践中搜索相关知识。当用户询问「怎么排查」「如何配置」「文档要求」等知识性问题时调用",
+        handler=_safe_import("app.mcp_plugins.rag_plugin", "rag_search_handler"),
+        risk_level=RiskLevel.READ_ONLY,
+        parameters={
+            "query": {"type": "string", "description": "检索查询, 用中文关键词描述你想了解的问题"},
+            "top_k": {"type": "integer", "default": 5, "minimum": 1, "maximum": 10, "description": "返回结果数"},
+        },
+    ))
+    reg.register(MCPTool(
+        name="rag_stats",
+        description="查看 RAG 知识库统计信息: 总条目数/集合状态",
+        handler=_safe_import("app.mcp_plugins.rag_plugin", "rag_stats_handler"),
+        risk_level=RiskLevel.READ_ONLY,
+    ))
+
 
 #方法: 安全导入插件模块和函数, 失败返回占位函数
 def _safe_import(module_path, func_name):

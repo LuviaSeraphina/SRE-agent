@@ -25,3 +25,4 @@ build-deb.sh
 config/
 TODO/
 .playwright-mcp/
+data/

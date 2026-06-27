@@ -18,6 +18,7 @@ LLM Provider 切换: 通过 .env 中 LLM_PROVIDER 配置, 支持 ollama / deepse
 """
 import asyncio
 import json
+import os
 from app.services.confirm_state import PENDING_CONFIRMS, CONFIRM_RESULTS
 from app.mcp_plugins.base import registry
 from app.core.platform_detect import _get_platform_info as get_platform_info
@@ -47,7 +48,7 @@ def build_system_prompt():
     if _cached_prompt is not None:
         return _cached_prompt
     platform=_get_platform_cached()
-    _cached_prompt=f"""你是麒麟操作系统上的智能运维 Agent (XikiyAIOps)。
+    _cached_prompt=f"""你是Linux系统上的智能运维 Agent (XikiyAIOps)。
 
 ## 运行环境
 - 操作系统: {platform.get("os", "未知")}
@@ -206,6 +207,20 @@ def _extract_metrics(tool_results):
     return metrics
 
 
+# ── RAG 自动注入 (委托给 rag.inject 模块) ────────
+
+def _inject_rag_context(user_input:str)->str:
+    """根据用户输入自动检索知识库并注入 system prompt"""
+    try:
+        from app.rag.inject import ensure_updated, inject_context
+        ensure_updated()
+        return inject_context(user_input)
+    except Exception:
+        return ""  #RAG 不可用时静默降级
+    except Exception:
+        return ""  #RAG 不可用时静默降级, 不影响对话
+
+
 """
 方法: chat_stream(), 主入口 — 安全检测 + LLM 流式对话 + Tool 调用循环 + RCA 分析
 """
@@ -217,7 +232,8 @@ async def chat_stream(user_input, history=None, session_id=""):
         return
 
     # 2. 构建 messages
-    messages: list=[{"role": "system", "content": build_system_prompt()}]
+    system_content=build_system_prompt() + _inject_rag_context(user_input)
+    messages: list=[{"role": "system", "content": system_content}]
     if history:
         messages.extend(history)
     messages.append({"role": "user", "content": user_input})
