@@ -74,8 +74,10 @@ class MCPPluginRegistry:
         max_level=risk_order[RiskLevel(max_risk)]
         return [t for t in self._tools.values() if risk_order[t.risk_level]<=max_level]
 
-    def call(self, name, **kwargs):
-        """统一调用入口, 自动校验 risk_level + 权限预检"""
+    def call(self, name, _raw=False, **kwargs):
+        """统一调用入口, 自动校验 risk_level + 权限预检
+        _raw=True: 跳过脱敏 (供 Agent 内部感知用, 前端展示仍需单独脱敏)
+        """
         tool=self._tools.get(name)
         if not tool:
             return {"tool": name, "risk_level": "error", "data": {}, "summary": {"error": "Tool not found: {}".format(name)}}
@@ -86,7 +88,7 @@ class MCPPluginRegistry:
             return {"tool": name, "risk_level": "blocked", "data": {}, "summary": {"error": reason}}
 
         result = tool.execute(**kwargs)
-        return sanitize_response(name, result)
+        return result if _raw else sanitize_response(name, result)
 
     @property
     def count(self):
