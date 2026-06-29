@@ -97,10 +97,19 @@ fi
 
 #编译工具链 (pip 在线安装需编译原生扩展: greenlet/httptools/watchfiles 等)
 if [ "$IS_LOONGARCH" = true ]; then
-  for pkg in gcc gcc-c++ make git cmake python3-devel; do
+  for pkg in gcc gcc-c++ make git cmake python3-devel gcc-gfortran; do
     install_pkg "$pkg" 2>/dev/null || true
   done
   log_ok "编译工具链就绪 (LoongArch)"
+
+  #Rust 离线恢复 (避免 rustup 联网)
+  _RUST_OFFLINE="$PROJECT_DIR/offline-packages/rust-loongarch64.tar.gz"
+  if [ -f "$_RUST_OFFLINE" ] && ! command -v cargo &>/dev/null; then
+    log_info "恢复 Rust 工具链 (离线)..."
+    tar xzf "$_RUST_OFFLINE" -C "$HOME" 2>/dev/null
+    export PATH="$HOME/.cargo/bin:$PATH"
+    log_ok "Cargo: $(cargo --version 2>/dev/null || echo '失败')"
+  fi
 else
   #x86_64: 区分 dnf/apt 包名
   if [ "$PKG_MGR" = "dnf" ]; then
@@ -169,6 +178,12 @@ if [ "$_HAS_WHEELS" = true ]; then
     _DONE=$((_DONE + 1))
   done
   log_ok "已安装 $_DONE / $_TOTAL 个包"
+
+  #LoongArch: gfortran 刚装, 强制重装 numpy 让其重新链接 Fortran 符号
+  if [ "$IS_LOONGARCH" = true ]; then
+    log_info "LoongArch: 重新链接 numpy Fortran 符号..."
+    "$VENV_PIP" install --force-reinstall --no-deps --no-build-isolation numpy 2>&1 | tail -1 || true
+  fi
 
   #修复 pydantic 版本检查 + METADATA
   _CORE_VER=$("$VENV_PIP" show pydantic-core 2>/dev/null | awk '/Version/ {print $2}')
