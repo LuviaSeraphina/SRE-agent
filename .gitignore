@@ -26,3 +26,4 @@ config/
 TODO/
 .playwright-mcp/
 data/
+docs/CHANGELOG.md

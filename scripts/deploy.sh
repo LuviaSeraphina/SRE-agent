@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================
-# XikiyAIOps 一键部署 v1.0.0
+# XikiyAIOps 一键部署 v1.1.0
 # 用法: bash scripts/deploy.sh
 # ============================================================
 set -euo pipefail
@@ -23,7 +23,7 @@ ACTUAL_USER="${SUDO_USER:-$(whoami)}"
 
 echo -e "${BOLD}${GREEN}"
 echo "  ╔══════════════════════════════════════╗"
-echo "  ║   XikiyAIOps 一键部署 v1.0.0          ║"
+echo "  ║   XikiyAIOps 一键部署 v1.1.0          ║"
 echo "  ╚══════════════════════════════════════╝"
 echo -e "${NC}"
 
